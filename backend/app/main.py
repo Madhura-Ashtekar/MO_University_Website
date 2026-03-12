@@ -1,0 +1,409 @@
+from __future__ import annotations
+
+from datetime import datetime
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import Session, select
+
+from .db import engine, init_db
+from .logic import classify, derive_event_context
+from .models import AdminQueueItem, Execution, Workflow, Team
+from .schemas import (
+    AdvanceWorkflowRequest,
+    ExecutionPatch,
+    ResolveTbdRequest,
+    TeamCreate,
+    TeamSummary,
+    WorkflowCreateFromDraft,
+    WorkflowDetail,
+    WorkflowSummary,
+)
+
+app = FastAPI(
+    title="Meal Outpost Athletics API",
+    description="Backend for the athletics meal intake, Stripe billing prep, and Nash dispatch flows.",
+    version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
+
+
+@app.get("/")
+def root():
+    return {"message": "Meal Outpost API is running", "time": datetime.utcnow().isoformat()}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/teams", response_model=list[TeamSummary])
+def list_teams():
+    with Session(engine) as session:
+        teams = session.exec(select(Team).order_by(Team.name)).all()
+        # Fallback: find unique teams from workflows if team table is empty
+        if not teams:
+            workflows = session.exec(select(Workflow)).all()
+            unique_teams = {}
+            for w in workflows:
+                key = (w.team_name, w.school_name, w.sport)
+                if key not in unique_teams:
+                    unique_teams[key] = {
+                        "id": f"wf-team-{len(unique_teams)}",
+                        "name": w.team_name,
+                        "school_name": w.school_name or "Unknown",
+                        "sport": w.sport or "Unknown",
+                        "conference": w.conference,
+                        "division": w.division or "DI",
+                        "default_headcount": 45,
+                        "default_budget": 65.0
+                    }
+            return list(unique_teams.values())
+        return teams
+
+
+@app.post("/teams", response_model=TeamSummary)
+def create_team(payload: TeamCreate):
+    with Session(engine) as session:
+        team = Team(
+            name=payload.name,
+            school_name=payload.schoolName,
+            sport=payload.sport,
+            conference=payload.conference,
+            division=payload.division,
+            default_headcount=payload.defaultHeadcount,
+            default_budget=payload.defaultBudget
+        )
+        session.add(team)
+        session.commit()
+        session.refresh(team)
+        return team
+
+
+@app.get("/workflows", response_model=list[WorkflowSummary])
+def list_workflows():
+    with Session(engine) as session:
+        workflows = session.exec(select(Workflow).order_by(Workflow.created_at.desc())).all()
+        executions = session.exec(select(Execution)).all()
+        queue_open = session.exec(select(AdminQueueItem).where(AdminQueueItem.status == "open")).all()
+
+    ex_by_wf: dict[str, list[Execution]] = {}
+    for e in executions:
+        ex_by_wf.setdefault(e.workflow_id, []).append(e)
+
+    q_by_wf: dict[str, list[AdminQueueItem]] = {}
+    for q in queue_open:
+        q_by_wf.setdefault(q.workflow_id, []).append(q)
+
+    out: list[WorkflowSummary] = []
+    for w in workflows:
+        ex = ex_by_wf.get(w.id, [])
+        counts = {
+            "mo": sum(1 for e in ex if e.fulfillment_type not in ("tbd", "not_mo")),
+            "tbd": sum(1 for e in ex if e.fulfillment_type == "tbd"),
+            "not_mo": sum(1 for e in ex if e.fulfillment_type == "not_mo"),
+            "queue_open": len(q_by_wf.get(w.id, [])),
+        }
+        out.append(WorkflowSummary(
+            id=w.id,
+            name=w.name,
+            team_name=w.team_name,
+            sport=w.sport,
+            status=w.status,
+            counts=counts,
+        ))
+    return out
+
+
+@app.get("/workflows/{workflow_id}", response_model=WorkflowDetail)
+def get_workflow(workflow_id: str):
+    with Session(engine) as session:
+        w = session.get(Workflow, workflow_id)
+        if not w:
+            raise HTTPException(status_code=404, detail="workflow not found")
+        ex = session.exec(select(Execution).where(Execution.workflow_id == workflow_id)).all()
+        q = session.exec(select(AdminQueueItem).where(AdminQueueItem.workflow_id == workflow_id, AdminQueueItem.status == "open")).all()
+
+    return WorkflowDetail(
+        id=w.id,
+        name=w.name,
+        team_name=w.team_name,
+        school_name=w.school_name,
+        conference=w.conference,
+        division=w.division,
+        sport=w.sport,
+        trip_type=w.trip_type,
+        home_away_neutral=w.home_away_neutral,
+        opponent=w.opponent,
+        venue_name=w.venue_name,
+        city=w.city,
+        state=w.state,
+        game_date=w.game_date,
+        game_time=w.game_time,
+        status=w.status,
+        executions=[e.model_dump() for e in ex],
+        queue_open=[qi.model_dump() for qi in q],
+    )
+
+
+@app.post("/workflows/from-draft")
+def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
+    workflow = Workflow(
+        name=draft.name,
+        team_name=draft.teamName,
+        school_name=draft.schoolName,
+        conference=draft.conference,
+        division=draft.division,
+        sport=draft.sport,
+        trip_type=draft.tripType,
+        home_away_neutral=draft.homeAwayNeutral,
+        opponent=draft.opponent,
+        venue_name=draft.venueName,
+        city=draft.city,
+        state=draft.state,
+        game_date=draft.gameDate,
+        game_time=draft.gameTime,
+        status="submitted",
+    )
+
+    executions: list[Execution] = []
+    queue_items: list[AdminQueueItem] = []
+    workflow_id = workflow.id
+
+    # Trip-level feasibility item always.
+    queue_items.append(AdminQueueItem(type="feasibility", workflow_id=workflow_id, execution_id=None, status="open"))
+
+    for row in draft.rows:
+        mo_fulfills, fulfillment_type = classify(row.mealType, row.locationType, row.notes)
+        event_context = derive_event_context(row.mealType, row.locationType, row.notes)
+        status = "context_only" if fulfillment_type == "not_mo" else "submitted"
+        exe = Execution(
+            workflow_id=workflow_id,
+            date=row.date,
+            time=row.time,
+            timezone=row.timezone,
+            meal_type=row.mealType,
+            service_style=row.serviceStyle or "boxed",
+            location_type=row.locationType,
+            notes=row.notes,
+            event_context=event_context,
+            mo_fulfills=mo_fulfills,
+            fulfillment_type=fulfillment_type,
+            headcount=row.headcount,
+            dietary_counts=row.dietaryCounts or {},
+            status=status,
+        )
+        executions.append(exe)
+        if fulfillment_type == "tbd":
+            queue_items.append(AdminQueueItem(type="resolve_tbd", workflow_id=workflow_id, execution_id=exe.id, status="open"))
+
+    with Session(engine) as session:
+        session.add(workflow)
+        for e in executions:
+            session.add(e)
+        for q in queue_items:
+            session.add(q)
+        session.commit()
+
+    return {"workflow_id": workflow_id}
+
+
+@app.patch("/executions/{execution_id}")
+def patch_execution(execution_id: str, patch: ExecutionPatch):
+    with Session(engine) as session:
+        exe = session.get(Execution, execution_id)
+        if not exe:
+            raise HTTPException(status_code=404, detail="execution not found")
+
+        data = patch.model_dump(by_alias=False, exclude_unset=True)
+        # Normalize alias keys
+        if "meal_type" in data and data["meal_type"] is not None:
+            exe.meal_type = data["meal_type"]
+        if "location_type" in data and data["location_type"] is not None:
+            exe.location_type = data["location_type"]
+        if "notes" in data and data["notes"] is not None:
+            exe.notes = data["notes"]
+        if "time" in data and data["time"] is not None:
+            exe.time = data["time"]
+        if "timezone" in data and data["timezone"] is not None:
+            exe.timezone = data["timezone"]
+
+        # Allow explicit fulfillment_type override from admin.
+        if "fulfillment_type" in data and data["fulfillment_type"] is not None:
+            exe.fulfillment_type = data["fulfillment_type"]
+            exe.mo_fulfills = exe.fulfillment_type in ("mo_delivery", "mo_pickup")
+            exe.status = "context_only" if exe.fulfillment_type == "not_mo" else "submitted"
+        else:
+            mo_fulfills, fulfillment_type = classify(exe.meal_type, exe.location_type, exe.notes)
+            exe.mo_fulfills = mo_fulfills
+            exe.fulfillment_type = fulfillment_type
+            exe.status = "context_only" if fulfillment_type == "not_mo" else "submitted"
+
+        if "event_context" in data and data["event_context"] is not None:
+            exe.event_context = data["event_context"]
+        else:
+            exe.event_context = derive_event_context(exe.meal_type, exe.location_type, exe.notes)
+
+        exe.updated_at = datetime.utcnow()
+
+        # Queue maintenance: ensure/close TBD item.
+        q_open = session.exec(select(AdminQueueItem).where(
+            AdminQueueItem.type == "resolve_tbd",
+            AdminQueueItem.execution_id == exe.id,
+            AdminQueueItem.status == "open",
+        )).first()
+        if exe.fulfillment_type == "tbd":
+            if not q_open:
+                session.add(AdminQueueItem(type="resolve_tbd", workflow_id=exe.workflow_id, execution_id=exe.id, status="open"))
+        else:
+            if q_open:
+                q_open.status = "closed"
+                q_open.closed_at = datetime.utcnow()
+
+        session.add(exe)
+        session.commit()
+        session.refresh(exe)
+
+        return {"execution": exe.model_dump()}
+
+
+@app.post("/admin/resolve-tbd")
+def resolve_tbd(payload: ResolveTbdRequest):
+    with Session(engine) as session:
+        exe = session.get(Execution, payload.execution_id)
+        if not exe:
+            raise HTTPException(status_code=404, detail="execution not found")
+
+        exe.notes = payload.vendor_note.strip()
+        exe.location_type = "restaurant"
+        exe.mo_fulfills = True
+        exe.fulfillment_type = "mo_delivery"
+        exe.status = "submitted"
+        exe.event_context = derive_event_context(exe.meal_type, exe.location_type, exe.notes)
+        exe.updated_at = datetime.utcnow()
+
+        q_open = session.exec(select(AdminQueueItem).where(
+            AdminQueueItem.type == "resolve_tbd",
+            AdminQueueItem.execution_id == exe.id,
+            AdminQueueItem.status == "open",
+        )).first()
+        if q_open:
+            q_open.status = "closed"
+            q_open.closed_at = datetime.utcnow()
+            session.add(q_open)
+
+        session.add(exe)
+        session.commit()
+        return {"ok": True}
+
+
+@app.post("/admin/workflows/{workflow_id}/advance")
+def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
+    with Session(engine) as session:
+        w = session.get(Workflow, workflow_id)
+        if not w:
+            raise HTTPException(status_code=404, detail="workflow not found")
+
+        action = payload.action
+        if action == "feasibility_approve":
+            close_type = "feasibility"
+            open_next = "billing_prep"
+            w.status = "approved"
+        elif action == "billing_prep":
+            close_type = "billing_prep"
+            open_next = "dispatch_approval"
+            w.status = "billing_prepped"
+        elif action == "dispatch_approve":
+            close_type = "dispatch_approval"
+            open_next = None
+            w.status = "dispatch_approved"
+        else:
+            raise HTTPException(status_code=400, detail="unknown action")
+
+        q = session.exec(select(AdminQueueItem).where(
+            AdminQueueItem.workflow_id == workflow_id,
+            AdminQueueItem.type == close_type,
+            AdminQueueItem.status == "open",
+        )).first()
+        if q:
+            q.status = "closed"
+            q.closed_at = datetime.utcnow()
+            session.add(q)
+
+        if open_next:
+            exists = session.exec(select(AdminQueueItem).where(
+                AdminQueueItem.workflow_id == workflow_id,
+                AdminQueueItem.type == open_next,
+                AdminQueueItem.status == "open",
+            )).first()
+            if not exists:
+                session.add(AdminQueueItem(type=open_next, workflow_id=workflow_id, execution_id=None, status="open"))
+
+        w.updated_at = datetime.utcnow()
+        session.add(w)
+        session.commit()
+        return {"ok": True, "status": w.status}
+
+
+@app.get("/admin/queue")
+def list_admin_queue_open():
+    with Session(engine) as session:
+        q = session.exec(select(AdminQueueItem).where(AdminQueueItem.status == "open").order_by(AdminQueueItem.created_at.desc())).all()
+    return {"items": [qi.model_dump() for qi in q]}
+
+
+@app.get("/analytics/budget")
+def get_budget_analytics():
+    with Session(engine) as session:
+        executions = session.exec(select(Execution)).all()
+        workflows = session.exec(select(Workflow)).all()
+
+    wf_map = {w.id: w for w in workflows}
+    
+    total_spend = 0.0
+    total_cost = 0.0
+    by_team = {}
+    by_month = {}
+    
+    for e in executions:
+        total_spend += e.total_price or 0.0
+        total_cost += e.cost or 0.0
+        
+        wf = wf_map.get(e.workflow_id)
+        if wf:
+            team_key = wf.team_name
+            team_stats = by_team.get(team_key, {"spend": 0.0, "meals": 0, "avg": 0.0})
+            team_stats["spend"] += e.total_price or 0.0
+            team_stats["meals"] += 1
+            by_team[team_key] = team_stats
+            
+        # Group by month
+        month = e.date[:7] # YYYY-MM
+        month_stats = by_month.get(month, {"spend": 0.0, "meals": 0})
+        month_stats["spend"] += e.total_price or 0.0
+        month_stats["meals"] += 1
+        by_month[month] = month_stats
+        
+    # Reformat for frontend
+    team_list = [{"name": k, **v} for k, v in by_team.items()]
+    month_list = [{"month": k, **v} for k, v in by_month.items()]
+    
+    return {
+        "total_spend": total_spend,
+        "total_cost": total_cost,
+        "total_margin": total_spend - total_cost,
+        "by_team": sorted(team_list, key=lambda x: x["spend"], reverse=True),
+        "by_month": sorted(month_list, key=lambda x: x["month"]),
+    }

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-ssr/
+__pycache__/
+*.pyc
+.env
+*.db
+.DS_Store
+*.local
+logs
+*.log
+.vscode/
+.idea/
+*.swp
+*.swo
