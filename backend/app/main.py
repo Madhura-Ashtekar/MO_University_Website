@@ -16,9 +16,11 @@ from .schemas import (
     ExecutionPatch,
     ResolveTbdRequest,
     TeamCreate,
+    TeamPatch,
     TeamSummary,
     WorkflowCreateFromDraft,
     WorkflowDetail,
+    WorkflowPatch,
     WorkflowSummary,
 )
 
@@ -90,12 +92,58 @@ def create_team(payload: TeamCreate):
             conference=payload.conference,
             division=payload.division,
             default_headcount=payload.defaultHeadcount,
-            default_budget=payload.defaultBudget
+            default_budget=payload.defaultBudget,
+            stripe_customer_id=payload.stripeCustomerId,
         )
         session.add(team)
         session.commit()
         session.refresh(team)
         return team
+
+
+@app.patch("/teams/{team_id}", response_model=TeamSummary)
+def patch_team(team_id: str, patch: TeamPatch):
+    with Session(engine) as session:
+        team = session.get(Team, team_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="team not found")
+        data = patch.model_dump(by_alias=False, exclude_unset=True)
+        if "name" in data and data["name"] is not None:
+            team.name = data["name"]
+        if "school_name" in data and data["school_name"] is not None:
+            team.school_name = data["school_name"]
+        if "sport" in data and data["sport"] is not None:
+            team.sport = data["sport"]
+        if "conference" in data:
+            team.conference = data["conference"]
+        if "division" in data and data["division"] is not None:
+            team.division = data["division"]
+        if "default_headcount" in data and data["default_headcount"] is not None:
+            team.default_headcount = data["default_headcount"]
+        if "default_budget" in data and data["default_budget"] is not None:
+            team.default_budget = data["default_budget"]
+        if "stripe_customer_id" in data:
+            team.stripe_customer_id = data["stripe_customer_id"]
+        team.updated_at = datetime.utcnow()
+        session.add(team)
+        session.commit()
+        session.refresh(team)
+        return team
+
+
+@app.patch("/workflows/{workflow_id}")
+def patch_workflow(workflow_id: str, patch: WorkflowPatch):
+    with Session(engine) as session:
+        w = session.get(Workflow, workflow_id)
+        if not w:
+            raise HTTPException(status_code=404, detail="workflow not found")
+        data = patch.model_dump(by_alias=False, exclude_unset=True)
+        if "stripe_invoice_id" in data:
+            w.stripe_invoice_id = data["stripe_invoice_id"]
+        w.updated_at = datetime.utcnow()
+        session.add(w)
+        session.commit()
+        return {"ok": True}
 
 
 @app.get("/workflows", response_model=list[WorkflowSummary])
@@ -177,8 +225,21 @@ def get_workflow(workflow_id: str):
 
 @app.post("/workflows/from-draft")
 def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
+    # Resolve team_id by matching name+school so the FK is populated.
+    team_id: str | None = None
+    with Session(engine) as session:
+        team = session.exec(
+            select(Team).where(
+                Team.name == draft.teamName,
+                Team.school_name == (draft.schoolName or ""),
+            )
+        ).first()
+        if team:
+            team_id = team.id
+
     workflow = Workflow(
         name=draft.name,
+        team_id=team_id,
         team_name=draft.teamName,
         school_name=draft.schoolName,
         conference=draft.conference,
@@ -277,10 +338,29 @@ def patch_execution(execution_id: str, patch: ExecutionPatch):
         else:
             exe.event_context = derive_event_context(exe.meal_type, exe.location_type, exe.notes)
 
-        # cost_per_meal → cost + recompute margin (revenue - cost)
+        # Financials: unit_price → total_price; cost_per_meal → cost; recompute margin
+        if "unit_price" in data and data["unit_price"] is not None:
+            exe.unit_price = float(data["unit_price"])
+            exe.total_price = exe.unit_price * exe.headcount
         if "cost_per_meal" in data and data["cost_per_meal"] is not None:
             exe.cost = float(data["cost_per_meal"]) * exe.headcount
+        # Always recompute margin when either financial changes
+        if "unit_price" in data or "cost_per_meal" in data:
             exe.margin = exe.total_price - exe.cost
+
+        # Nash delivery fields — written whenever provided
+        for src, dest in [
+            ("pickup_address", "pickup_address"),
+            ("delivery_address", "delivery_address"),
+            ("pickup_contact_name", "pickup_contact_name"),
+            ("pickup_contact_phone", "pickup_contact_phone"),
+            ("delivery_contact_name", "delivery_contact_name"),
+            ("delivery_contact_phone", "delivery_contact_phone"),
+            ("delivery_window_start", "delivery_window_start"),
+            ("delivery_window_end", "delivery_window_end"),
+        ]:
+            if src in data:
+                setattr(exe, dest, data[src])
 
         exe.updated_at = datetime.utcnow()
 

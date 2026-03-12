@@ -13,7 +13,9 @@ export function PageWorkflows({ go, showToast }) {
   const [detail, setDetail] = useState(null)
   const [adminQueue, setAdminQueue] = useState([])
   const [resolveDraft, setResolveDraft] = useState({ executionId: null, vendor: '', fulfillmentType: 'mo_delivery' })
-  const [editDraft, setEditDraft] = useState(null)  // { executionId, fields: { time, timezone, notes, fulfillmentType, eventContext, costPerMeal } }
+  const [editDraft, setEditDraft] = useState(null)
+  // billingReview: { workflowId, rows: [{id, title, headcount, unitPrice, costPerMeal}] }
+  const [billingReview, setBillingReview] = useState(null)
 
   // Tracks which workflow ID had its detail pre-fetched by the mount effect.
   // The selection useEffect skips re-fetching that ID to prevent a double call on load.
@@ -111,6 +113,20 @@ export function PageWorkflows({ go, showToast }) {
       headcount: e.headcount,
       dietaryCounts: e.dietary_counts || {},
       status: e.status,
+      // Financials
+      unitPrice: e.unit_price ?? 0,
+      totalPrice: e.total_price ?? 0,
+      cost: e.cost ?? 0,
+      margin: e.margin ?? 0,
+      // Nash delivery fields
+      pickupAddress: e.pickup_address,
+      deliveryAddress: e.delivery_address,
+      pickupContactName: e.pickup_contact_name,
+      pickupContactPhone: e.pickup_contact_phone,
+      deliveryContactName: e.delivery_contact_name,
+      deliveryContactPhone: e.delivery_contact_phone,
+      deliveryWindowStart: e.delivery_window_start,
+      deliveryWindowEnd: e.delivery_window_end,
     }))
   }, [detail])
 
@@ -157,6 +173,34 @@ export function PageWorkflows({ go, showToast }) {
     showToast('Changes saved')
     await refreshList()
     await refreshDetail(selectedIdRef.current)
+  }
+
+  const openBillingReview = (workflowId, moRows) => {
+    setBillingReview({
+      workflowId,
+      rows: moRows.map((e) => ({
+        id: e.id,
+        title: fmtExecTitle(e),
+        headcount: e.headcount,
+        unitPrice: e.unitPrice || '',
+        costPerMeal: e.cost > 0 ? (e.cost / (e.headcount || 1)).toFixed(2) : '',
+      })),
+    })
+    setRightTab('workflow')
+  }
+
+  const confirmBillingAndAdvance = async () => {
+    if (!billingReview) return
+    // Save any unit_price / cost_per_meal entered by the admin
+    const patches = billingReview.rows.filter((r) => r.unitPrice !== '' || r.costPerMeal !== '')
+    for (const r of patches) {
+      const body = {}
+      if (r.unitPrice !== '') body.unitPrice = Number(r.unitPrice)
+      if (r.costPerMeal !== '') body.costPerMeal = Number(r.costPerMeal)
+      await apiFetch(`/executions/${r.id}`, { method: 'PATCH', body })
+    }
+    await advance(billingReview.workflowId, 'billing_prep')
+    setBillingReview(null)
   }
 
   const advance = async (workflowId, action) => {
@@ -278,7 +322,18 @@ export function PageWorkflows({ go, showToast }) {
                             setResolveDraft({ executionId: q.execution_id, vendor: '', fulfillmentType: 'mo_delivery' })
                             return
                           }
-                          const action = q.type === 'feasibility' ? 'feasibility_approve' : q.type === 'billing_prep' ? 'billing_prep' : q.type === 'dispatch_approval' ? 'dispatch_approve' : null
+                          if (q.type === 'billing_prep') {
+                            // Show billing review before advancing — load detail first if needed
+                            const target = selectedWorkflow?.id === q.workflow_id ? grouped.mo : []
+                            if (target.length > 0) {
+                              openBillingReview(q.workflow_id, target)
+                            } else {
+                              setSelectedWorkflowId(q.workflow_id)
+                              setRightTab('workflow')
+                            }
+                            return
+                          }
+                          const action = q.type === 'feasibility' ? 'feasibility_approve' : q.type === 'dispatch_approval' ? 'dispatch_approve' : null
                           if (!action) return
                           advance(q.workflow_id, action).catch((e) => showToast(e.message, 'error'))
                         }}>Take Action</button>
@@ -367,6 +422,54 @@ export function PageWorkflows({ go, showToast }) {
                       <ExecutionSection title="Not MO (Logged Only)" badgeClass="badge-gray" rows={grouped.notMo} onEdit={(e) => setEditDraft({ executionId: e.id, fields: { ...e } })} />
                     </div>
 
+                    {/* Billing review panel — shown before billing_prep advance */}
+                    {billingReview?.workflowId === selectedWorkflow.id && (
+                      <div style={{ marginTop: 14, background: '#F0FFF4', border: '1.5px solid #86EFAC', borderRadius: 12, padding: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div style={{ fontSize: 13, fontWeight: 900, color: '#14532D' }}>Billing Review</div>
+                          <button className="btn-secondary" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => setBillingReview(null)}>Cancel</button>
+                        </div>
+                        <div style={{ fontSize: 11, color: '#166534', marginBottom: 10 }}>Enter unit price (charged to client) and cost per meal (MO pays vendor) before confirming billing prep.</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {billingReview.rows.map((r, i) => (
+                            <div key={r.id} style={{ background: 'white', border: '1px solid #D1FAE5', borderRadius: 10, padding: 10 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 6, color: '#374151' }}>{r.title}</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 800, color: '#718096', marginBottom: 3 }}>Unit Price / Meal ($)</div>
+                                  <input className="form-field" type="number" step="0.01" min="0"
+                                    value={r.unitPrice}
+                                    placeholder="65.00"
+                                    onChange={(e) => setBillingReview((p) => ({
+                                      ...p, rows: p.rows.map((row, j) => j === i ? { ...row, unitPrice: e.target.value } : row)
+                                    }))} />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 10, fontWeight: 800, color: '#718096', marginBottom: 3 }}>Cost / Meal ($)</div>
+                                  <input className="form-field" type="number" step="0.01" min="0"
+                                    value={r.costPerMeal}
+                                    placeholder="42.00"
+                                    onChange={(e) => setBillingReview((p) => ({
+                                      ...p, rows: p.rows.map((row, j) => j === i ? { ...row, costPerMeal: e.target.value } : row)
+                                    }))} />
+                                </div>
+                              </div>
+                              {r.unitPrice && r.costPerMeal && r.headcount > 0 && (
+                                <div style={{ marginTop: 6, fontSize: 10, color: '#166534' }}>
+                                  Revenue: ${(Number(r.unitPrice) * r.headcount).toFixed(0)} · Cost: ${(Number(r.costPerMeal) * r.headcount).toFixed(0)} · Margin: ${((Number(r.unitPrice) - Number(r.costPerMeal)) * r.headcount).toFixed(0)}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                          <button className="btn-primary" onClick={() => confirmBillingAndAdvance().catch((e) => showToast(e.message, 'error'))}>
+                            Confirm & Advance to Dispatch
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Edit execution panel */}
                     {editDraft?.executionId && (
                       <div style={{ marginTop: 14, background: 'white', border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 12 }}>
@@ -412,13 +515,24 @@ export function PageWorkflows({ go, showToast }) {
                             </select>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, fontWeight: 800, color: '#718096', marginBottom: 4 }}>Cost / Meal ($) <span style={{ fontWeight: 400, color: '#A0AEC0' }}>— what MO pays vendor</span></div>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: '#718096', marginBottom: 4 }}>Unit Price / Meal ($)</div>
+                            <input className="form-field" type="number" step="0.01" min="0"
+                              value={editDraft.fields.unitPrice ?? ''}
+                              placeholder="65.00"
+                              onChange={(e) => setEditDraft((p) => ({ ...p, fields: { ...p.fields, unitPrice: e.target.value === '' ? null : Number(e.target.value) } }))} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: '#718096', marginBottom: 4 }}>Cost / Meal ($) <span style={{ fontWeight: 400, color: '#A0AEC0' }}>MO pays vendor</span></div>
                             <input className="form-field" type="number" step="0.01" min="0"
                               value={editDraft.fields.costPerMeal ?? ''}
-                              placeholder="e.g. 42.00"
+                              placeholder="42.00"
                               onChange={(e) => setEditDraft((p) => ({ ...p, fields: { ...p.fields, costPerMeal: e.target.value === '' ? null : Number(e.target.value) } }))} />
                           </div>
                         </div>
+
+                        {/* Nash Delivery Details */}
+                        <NashFields fields={editDraft.fields} onChange={(k, v) => setEditDraft((p) => ({ ...p, fields: { ...p.fields, [k]: v } }))} />
+
                         <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                           <button className="btn-secondary" onClick={() => setEditDraft(null)}>Cancel</button>
                           <button className="btn-primary" onClick={() => {
@@ -428,7 +542,16 @@ export function PageWorkflows({ go, showToast }) {
                               notes: editDraft.fields.notes,
                               fulfillmentType: editDraft.fields.fulfillmentType,
                               eventContext: editDraft.fields.eventContext,
+                              unitPrice: editDraft.fields.unitPrice,
                               costPerMeal: editDraft.fields.costPerMeal,
+                              pickupAddress: editDraft.fields.pickupAddress,
+                              deliveryAddress: editDraft.fields.deliveryAddress,
+                              pickupContactName: editDraft.fields.pickupContactName,
+                              pickupContactPhone: editDraft.fields.pickupContactPhone,
+                              deliveryContactName: editDraft.fields.deliveryContactName,
+                              deliveryContactPhone: editDraft.fields.deliveryContactPhone,
+                              deliveryWindowStart: editDraft.fields.deliveryWindowStart,
+                              deliveryWindowEnd: editDraft.fields.deliveryWindowEnd,
                             }).then(() => setEditDraft(null)).catch((e) => showToast(e.message, 'error'))
                           }}>Save Changes</button>
                         </div>
@@ -441,6 +564,49 @@ export function PageWorkflows({ go, showToast }) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function NashFields({ fields, onChange }) {
+  const [open, setOpen] = useState(false)
+  const hasData = fields.pickupAddress || fields.deliveryAddress || fields.pickupContactName || fields.deliveryContactName
+  return (
+    <div style={{ marginTop: 14, border: '1.5px solid #E2E8F0', borderRadius: 10 }}>
+      <button
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "inherit" }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span style={{ fontSize: 11, fontWeight: 800, color: '#0F62FE', letterSpacing: '0.05em' }}>
+          NASH DELIVERY DETAILS {hasData && '✓'}
+        </span>
+        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#718096' }}>{open ? 'expand_less' : 'expand_more'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 12px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[
+            ['pickupAddress', 'Pickup Address', 'text', '1/-1'],
+            ['deliveryAddress', 'Delivery Address', 'text', '1/-1'],
+            ['pickupContactName', 'Pickup Contact Name', 'text', null],
+            ['pickupContactPhone', 'Pickup Contact Phone', 'tel', null],
+            ['deliveryContactName', 'Delivery Contact Name', 'text', null],
+            ['deliveryContactPhone', 'Delivery Contact Phone', 'tel', null],
+            ['deliveryWindowStart', 'Delivery Window Start', 'time', null],
+            ['deliveryWindowEnd', 'Delivery Window End', 'time', null],
+          ].map(([key, label, type, col]) => (
+            <div key={key} style={col ? { gridColumn: col } : {}}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#718096', marginBottom: 3 }}>{label}</div>
+              <input
+                className="form-field"
+                type={type}
+                value={fields[key] || ''}
+                placeholder={label}
+                onChange={(e) => onChange(key, e.target.value || null)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

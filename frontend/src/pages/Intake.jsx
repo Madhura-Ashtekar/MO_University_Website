@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { parseAthleticsEmailToDraft, EXAMPLE_EMAIL_BASEBALL, EXAMPLE_EMAIL_WRESTLING } from '../demo/intakeParser'
 import { classifyMealRow, classificationPill } from '../utils/classify'
-import { fmtTime12 } from '../utils/format'
+import { fmtTime12, fmtDateShort } from '../utils/format'
 
 export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) {
   const [mode, setMode] = useState('paste')
@@ -9,6 +9,7 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
   const [teamName, setTeamName] = useState(defaultTeam || "Varsity Baseball (Men's)")
   const [schoolName, setSchoolName] = useState('')
   const [conference, setConference] = useState('')
+  const [division, setDivision] = useState('DI')
   const [sport, setSport] = useState('')
   const [tripType, setTripType] = useState('multi_day')
   const [homeAwayNeutral, setHomeAwayNeutral] = useState('away')
@@ -77,6 +78,7 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
         teamName,
         schoolName,
         conference,
+        division,
         sport,
         tripType,
         homeAwayNeutral,
@@ -142,10 +144,20 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: '#718096', display: 'block', marginBottom: 5 }}>Conference</label>
               <input className="form-field" value={conference} onChange={(e) => setConference(e.target.value)} placeholder="ACC, Big 10..." />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#718096', display: 'block', marginBottom: 5 }}>Division</label>
+              <select className="form-field" value={division} onChange={(e) => setDivision(e.target.value)}>
+                <option value="DI">DI</option>
+                <option value="DII">DII</option>
+                <option value="DIII">DIII</option>
+                <option value="NAIA">NAIA</option>
+                <option value="NJCAA">NJCAA</option>
+              </select>
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: '#718096', display: 'block', marginBottom: 5 }}>Sport <span style={{ color: '#EF4444' }}>*</span></label>
@@ -298,7 +310,10 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
                     const pill = classificationPill(fulfillmentType)
                     return (
                       <tr key={`${r.date}_${r.time}_${idx}`} style={{ borderBottom: '1px solid #F4F6F9' }}>
-                        <td style={{ padding: '10px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>{r.date}</td>
+                        <td style={{ padding: '10px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 700 }}>{fmtDateShort(r.date)}</div>
+                          <div style={{ fontSize: 10, color: '#A0AEC0' }}>{new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                        </td>
                         <td style={{ padding: '10px 10px', whiteSpace: 'nowrap' }}>
                           <input style={{ width: 90 }} className="form-field" value={r.time || ''} placeholder="HH:MM" onChange={(e) => updateRow(idx, { time: e.target.value || null })} />
                         </td>

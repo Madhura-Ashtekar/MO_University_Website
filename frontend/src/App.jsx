@@ -120,17 +120,16 @@ function AppContent() {
 
   const refreshMeta = useCallback(async () => {
     try {
-      const [workflows, queue] = await Promise.all([
-        apiFetch('/workflows'),
-        apiFetch('/admin/queue')
-      ])
+      // Only poll the queue endpoint — Workflows page owns its own full data fetch.
+      // This halves background API traffic vs. polling both /workflows and /admin/queue.
+      const queue = await apiFetch('/admin/queue')
       const openQueue = (queue.items || []).filter(q => q.status === 'open')
       const openTbd = openQueue.filter(q => q.type === 'resolve_tbd').length
-      setServerMeta({
-        workflows: workflows.length,
+      setServerMeta(prev => ({
+        ...prev,
         openQueue: openQueue.length,
         openTbd
-      })
+      }))
       setServerHealthy(true)
     } catch (e) {
       setServerHealthy(false)
@@ -139,7 +138,7 @@ function AppContent() {
 
   useEffect(() => {
     refreshMeta()
-    const timer = setInterval(refreshMeta, 10000)
+    const timer = setInterval(refreshMeta, 30000)  // 30s — was 10s polling /workflows + /admin/queue
     return () => clearInterval(timer)
   }, [refreshMeta])
 

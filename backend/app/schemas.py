@@ -12,6 +12,21 @@ class TeamCreate(BaseModel):
     division: str = "DI"
     defaultHeadcount: int = 45
     defaultBudget: float = 65.0
+    stripeCustomerId: Optional[str] = None
+
+
+class TeamPatch(BaseModel):
+    name: Optional[str] = None
+    schoolName: Optional[str] = Field(default=None, alias="schoolName")
+    sport: Optional[str] = None
+    conference: Optional[str] = None
+    division: Optional[str] = None
+    defaultHeadcount: Optional[int] = Field(default=None, alias="defaultHeadcount")
+    defaultBudget: Optional[float] = Field(default=None, alias="defaultBudget")
+    stripeCustomerId: Optional[str] = Field(default=None, alias="stripeCustomerId")
+
+    class Config:
+        populate_by_name = True
 
 
 class TeamSummary(BaseModel):
@@ -96,8 +111,20 @@ class ExecutionPatch(BaseModel):
     notes: Optional[str] = None
     fulfillment_type: Optional[str] = Field(default=None, alias="fulfillmentType")
     event_context: Optional[str] = Field(default=None, alias="eventContext")
-    # cost_per_meal is what MO pays the restaurant; margin = total_price - (cost_per_meal * headcount)
+
+    # Financials — unit_price is what MO charges the client; cost_per_meal is MO's cost to vendor
+    unit_price: Optional[float] = Field(default=None, alias="unitPrice")
     cost_per_meal: Optional[float] = Field(default=None, alias="costPerMeal")
+
+    # Nash delivery fields — required before dispatch can be triggered
+    pickup_address: Optional[str] = Field(default=None, alias="pickupAddress")
+    delivery_address: Optional[str] = Field(default=None, alias="deliveryAddress")
+    pickup_contact_name: Optional[str] = Field(default=None, alias="pickupContactName")
+    pickup_contact_phone: Optional[str] = Field(default=None, alias="pickupContactPhone")
+    delivery_contact_name: Optional[str] = Field(default=None, alias="deliveryContactName")
+    delivery_contact_phone: Optional[str] = Field(default=None, alias="deliveryContactPhone")
+    delivery_window_start: Optional[str] = Field(default=None, alias="deliveryWindowStart")
+    delivery_window_end: Optional[str] = Field(default=None, alias="deliveryWindowEnd")
 
     class Config:
         populate_by_name = True
@@ -107,6 +134,13 @@ class ResolveTbdRequest(BaseModel):
     execution_id: str
     vendor_note: str
     fulfillment_type: str = "mo_delivery"  # mo_delivery | mo_pickup
+
+
+class WorkflowPatch(BaseModel):
+    stripe_invoice_id: Optional[str] = Field(default=None, alias="stripeInvoiceId")
+
+    class Config:
+        populate_by_name = True
 
 
 class AdvanceWorkflowRequest(BaseModel):
