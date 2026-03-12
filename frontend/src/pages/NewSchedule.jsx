@@ -417,7 +417,7 @@ function Step3Dietary({ S, upd, schNext, togglePref, updVeg, onSubmitSchedule })
                     mealType: r.type,
                     locationType: r.loc,
                     notes: r.notes,
-                    budget: r.budget,
+                    budget: r.budget ? Number(r.budget) : null,
                     headcount: Number(S.schHeadcount),
                     dietaryCounts: {
                       vegetarian: Math.round((Number(S.vegPct) * Number(S.schHeadcount)) / 100),

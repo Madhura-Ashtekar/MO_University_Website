@@ -13,9 +13,12 @@ export function PageWorkflows({ go, showToast }) {
   const [detail, setDetail] = useState(null)
   const [adminQueue, setAdminQueue] = useState([])
   const [resolveDraft, setResolveDraft] = useState({ executionId: null, vendor: '', fulfillmentType: 'mo_delivery' })
-  const [editDraft, setEditDraft] = useState(null)
+  const [editDraft, setEditDraft] = useState(null)  // { executionId, fields: { time, timezone, notes, fulfillmentType, eventContext, costPerMeal } }
 
-  // Use a ref so refreshAll can access latest selectedWorkflowId without being in its dep array
+  // Tracks which workflow ID had its detail pre-fetched by the mount effect.
+  // The selection useEffect skips re-fetching that ID to prevent a double call on load.
+  const prefetchedIdRef = useRef(null)
+  // Tracks the latest selectedWorkflowId for use inside action callbacks without stale closures.
   const selectedIdRef = useRef(selectedWorkflowId)
   useEffect(() => { selectedIdRef.current = selectedWorkflowId }, [selectedWorkflowId])
 
@@ -32,23 +35,31 @@ export function PageWorkflows({ go, showToast }) {
     setDetail(d)
   }, [])
 
-  // Initial load + handle ?new=<id> from post-submit navigation
+  // Initial load: fetch list + detail in one pass, mark the pre-fetched ID so the
+  // selection effect below doesn't fire a second detail request for the same ID.
   useEffect(() => {
     const newId = searchParams.get('new')
     refreshList()
-      .then((list) => {
+      .then(async (list) => {
         const targetId = newId || list[0]?.id || null
+        if (targetId) {
+          await refreshDetail(targetId)
+          prefetchedIdRef.current = targetId  // mark before triggering selection effect
+        }
         setSelectedWorkflowId(targetId)
-        if (targetId) refreshDetail(targetId)
-        else setDetail(null)
       })
       .catch((e) => showToast(e.message, 'error'))
       .finally(() => setLoading(false))
   }, [])  // run once on mount
 
-  // Refresh detail when user selects a different workflow
+  // Re-fetch detail when the user picks a different workflow.
+  // Skips the ID that was already loaded by the mount effect above.
   useEffect(() => {
     if (!selectedWorkflowId) { setDetail(null); return }
+    if (prefetchedIdRef.current === selectedWorkflowId) {
+      prefetchedIdRef.current = null  // consume the skip token — future selections always fetch
+      return
+    }
     refreshDetail(selectedWorkflowId).catch((e) => showToast(e.message, 'error'))
   }, [selectedWorkflowId, refreshDetail, showToast])
 
@@ -149,8 +160,12 @@ export function PageWorkflows({ go, showToast }) {
   }
 
   const advance = async (workflowId, action) => {
-    await apiFetch(`/admin/workflows/${workflowId}/advance`, { method: 'POST', body: { action } })
-    showToast('Workflow advanced')
+    const result = await apiFetch(`/admin/workflows/${workflowId}/advance`, { method: 'POST', body: { action } })
+    if (action === 'dispatch_approve' && result.dispatched_count != null) {
+      showToast(`Dispatched ${result.dispatched_count} meal${result.dispatched_count !== 1 ? 's' : ''} to Nash`)
+    } else {
+      showToast('Workflow advanced')
+    }
     await refreshList()
     await refreshDetail(selectedIdRef.current)
   }
@@ -396,6 +411,13 @@ export function PageWorkflows({ go, showToast }) {
                               <option value="recovery">Recovery</option>
                             </select>
                           </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: '#718096', marginBottom: 4 }}>Cost / Meal ($) <span style={{ fontWeight: 400, color: '#A0AEC0' }}>— what MO pays vendor</span></div>
+                            <input className="form-field" type="number" step="0.01" min="0"
+                              value={editDraft.fields.costPerMeal ?? ''}
+                              placeholder="e.g. 42.00"
+                              onChange={(e) => setEditDraft((p) => ({ ...p, fields: { ...p.fields, costPerMeal: e.target.value === '' ? null : Number(e.target.value) } }))} />
+                          </div>
                         </div>
                         <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                           <button className="btn-secondary" onClick={() => setEditDraft(null)}>Cancel</button>
@@ -406,6 +428,7 @@ export function PageWorkflows({ go, showToast }) {
                               notes: editDraft.fields.notes,
                               fulfillmentType: editDraft.fields.fulfillmentType,
                               eventContext: editDraft.fields.eventContext,
+                              costPerMeal: editDraft.fields.costPerMeal,
                             }).then(() => setEditDraft(null)).catch((e) => showToast(e.message, 'error'))
                           }}>Save Changes</button>
                         </div>

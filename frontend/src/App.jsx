@@ -29,6 +29,37 @@ const NAV_ITEMS = [
   { id: 'budget', label: 'Budget', icon: 'payments', link: '/budget' },
 ]
 
+function buildChatReply(txt, S) {
+  const q = txt.toLowerCase()
+  if (/\btbd\b|resolve|vendor|assign/.test(q))
+    return `To resolve TBD meals, go to Workflows → select the workflow → click "Resolve" next to any TBD execution. Enter the vendor name and choose Delivery or Pickup.`
+  if (/budget|cost|price|spend|margin|money|financ/.test(q))
+    return `Budget tracking: set a per-meal budget in the Intake or New Schedule form. Once submitted, you can edit individual execution costs in the Workflows detail panel. The Budget page aggregates totals automatically.`
+  if (/nash|deliver|dispatch|pickup/.test(q))
+    return `Nash dispatch is triggered when a workflow reaches "dispatch_approved" status. Go to Workflows → take the workflow through Feasibility → Billing → Dispatch approval steps.`
+  if (/schedule|new|add|create/.test(q))
+    return `To add meals: use New Schedule for a step-by-step wizard, or Quick Intake to paste an itinerary email and have it parsed automatically.`
+  if (/intake|parse|email|itinerar/.test(q))
+    return `Paste your itinerary email into Quick Intake and click Parse. Review the generated draft rows, adjust any location types or notes, then Submit to Workflows.`
+  if (/team|roster|headcount|player/.test(q))
+    return `Team defaults (headcount, dietary preferences) are managed on the Teams page. These pre-fill when you create a new schedule for that team.`
+  if (/dietary|vegetarian|gluten|nut.free|allerg/.test(q))
+    return `Dietary counts are set per workflow during intake (veg %, gluten-free, nut-free toggles). They're stored per execution and visible in the Workflows detail panel.`
+  if (/stripe|invoice|bill|payment/.test(q))
+    return `Stripe invoicing is on the roadmap. Once unit prices and costs are confirmed in the billing prep step, invoice generation will be wired to Stripe automatically.`
+  if (/status|workflow|approv/.test(q))
+    return `Workflow lifecycle: Submitted → Feasibility Approved → Billing Prepped → Dispatch Approved. Each step has a corresponding Admin Queue action.`
+  if (/help|what can|how do|how to/.test(q))
+    return `I can help you with: resolving TBD meals, navigating the workflow lifecycle, understanding budget fields, or walking through the intake flow. What do you need?`
+  const team = S.schTeam || 'the team'
+  const fallbacks = [
+    `Got it. If you're working on the ${team} schedule, check the Workflows page for any TBD meals or pending admin actions.`,
+    `Noted. Use Quick Intake to parse a new itinerary, or New Schedule for a manual step-by-step entry.`,
+    `Understood. Is there a specific workflow or execution you'd like to look at? The Workflows page has the full detail view.`,
+  ]
+  return fallbacks[txt.length % fallbacks.length]
+}
+
 function AppContent() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -127,7 +158,8 @@ function AppContent() {
     const msgs = [...S.chatMsgs, { role: 'user', text: txt }]
     upd('chatMsgs', msgs)
     setTimeout(() => {
-      upd('chatMsgs', [...msgs, { role: 'ai', text: `I've noted that. I can help you adjust the ${S.schTeam} schedule or resolve those TBD meals.` }])
+      const reply = buildChatReply(txt, S)
+      upd('chatMsgs', [...msgs, { role: 'ai', text: reply }])
       const box = document.getElementById('chatMsgs')
       if (box) box.scrollTop = box.scrollHeight
     }, 800)

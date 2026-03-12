@@ -96,6 +96,8 @@ class ExecutionPatch(BaseModel):
     notes: Optional[str] = None
     fulfillment_type: Optional[str] = Field(default=None, alias="fulfillmentType")
     event_context: Optional[str] = Field(default=None, alias="eventContext")
+    # cost_per_meal is what MO pays the restaurant; margin = total_price - (cost_per_meal * headcount)
+    cost_per_meal: Optional[float] = Field(default=None, alias="costPerMeal")
 
     class Config:
         populate_by_name = True

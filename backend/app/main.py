@@ -277,6 +277,11 @@ def patch_execution(execution_id: str, patch: ExecutionPatch):
         else:
             exe.event_context = derive_event_context(exe.meal_type, exe.location_type, exe.notes)
 
+        # cost_per_meal → cost + recompute margin (revenue - cost)
+        if "cost_per_meal" in data and data["cost_per_meal"] is not None:
+            exe.cost = float(data["cost_per_meal"]) * exe.headcount
+            exe.margin = exe.total_price - exe.cost
+
         exe.updated_at = datetime.utcnow()
 
         # Queue maintenance: ensure/close TBD item.
@@ -351,6 +356,34 @@ def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
             close_type = "dispatch_approval"
             open_next = None
             w.status = "dispatch_approved"
+
+            # Mark all MO executions as dispatched and build Nash payload stub.
+            # TODO: replace stub with real POST to Nash /deliveries API.
+            mo_executions = session.exec(
+                select(Execution).where(
+                    Execution.workflow_id == workflow_id,
+                    Execution.mo_fulfills == True,  # noqa: E712
+                )
+            ).all()
+            nash_deliveries = []
+            for exe in mo_executions:
+                exe.status = "dispatched"
+                exe.updated_at = datetime.utcnow()
+                session.add(exe)
+                nash_deliveries.append({
+                    "execution_id": exe.id,
+                    "date": exe.date,
+                    "time": exe.time,
+                    "headcount": exe.headcount,
+                    "pickup_address": exe.pickup_address,
+                    "delivery_address": exe.delivery_address,
+                    "delivery_window_start": exe.delivery_window_start,
+                    "delivery_window_end": exe.delivery_window_end,
+                })
+            # Log what would be sent to Nash (swap for real HTTP call with NASH_API_KEY)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("[NASH STUB] Would dispatch %d deliveries for workflow %s: %s", len(nash_deliveries), workflow_id, nash_deliveries)
         else:
             raise HTTPException(status_code=400, detail="unknown action")
 
@@ -376,7 +409,10 @@ def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
         w.updated_at = datetime.utcnow()
         session.add(w)
         session.commit()
-        return {"ok": True, "status": w.status}
+        resp: dict = {"ok": True, "status": w.status}
+        if action == "dispatch_approve":
+            resp["dispatched_count"] = len(nash_deliveries)
+        return resp
 
 
 @app.get("/admin/queue")
