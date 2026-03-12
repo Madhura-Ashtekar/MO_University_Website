@@ -27,12 +27,12 @@ class TeamSummary(BaseModel):
 
 class IntakeRowIn(BaseModel):
     date: str
-    time: str
+    time: Optional[str] = None  # null means time is unknown (e.g. Wrestling emails with no time)
     timezone: str = "America/New_York"
     mealType: str
     locationType: str
     notes: str = ""
-    budget: Optional[str] = None
+    budget: Optional[float] = None
     headcount: int
     dietaryCounts: Optional[dict] = None
     serviceStyle: Optional[str] = "boxed"
@@ -82,6 +82,7 @@ class WorkflowDetail(BaseModel):
     state: Optional[str] = None
     game_date: Optional[str] = None
     game_time: Optional[str] = None
+    dietary_notes: Optional[str] = None
     status: str
     executions: list
     queue_open: list
@@ -103,8 +104,8 @@ class ExecutionPatch(BaseModel):
 class ResolveTbdRequest(BaseModel):
     execution_id: str
     vendor_note: str
+    fulfillment_type: str = "mo_delivery"  # mo_delivery | mo_pickup
 
 
 class AdvanceWorkflowRequest(BaseModel):
     action: str  # feasibility_approve | billing_prep | dispatch_approve
-

@@ -161,12 +161,36 @@ function AppContent() {
   const togglePref = (k) => upd(k, !S[k])
   const updVeg = (v) => upd('vegPct', v)
 
+  const resetFormState = () => {
+    setS((prev) => ({
+      ...prev,
+      schStep: 1,
+      schName: '',
+      schDays: [],
+      mealRowsByDay: {},
+      tripType: 'overnight',
+      homeAwayNeutral: 'away',
+      opponent: '',
+      venueName: '',
+      city: '',
+      state: '',
+      gameDate: '',
+      gameTime: '',
+      vegPct: 15,
+      glutenFree: true,
+      nutFree: false,
+      dietaryNotes: '',
+    }))
+  }
+
   const handleSubmitSchedule = async (draft) => {
     try {
-      await apiFetch('/workflows/from-draft', { method: 'POST', body: draft })
+      const result = await apiFetch('/workflows/from-draft', { method: 'POST', body: draft })
       showToast('Workflow created successfully!')
+      resetFormState()
       refreshMeta()
-      go('workflows')
+      // Navigate to workflows page and highlight the new workflow via URL param
+      navigate(`/workflows?new=${result.workflow_id}`)
     } catch (e) {
       showToast(e.message || 'Submit failed.', 'error')
     }
@@ -210,7 +234,7 @@ function AppContent() {
       </main>
 
       {S.showChat && <ChatPanel chatMsgs={S.chatMsgs} toggleChat={toggleChat} sendChat={sendChat} />}
-      <FloatBtn toggleChat={toggleChat} />
+      {!S.showChat && <FloatBtn toggleChat={toggleChat} />}
 
       {/* Toast Notification */}
       {toast && (

@@ -133,13 +133,28 @@ function parseDayHeader(line, year) {
 }
 
 function extractNotesFromBullet(line) {
+  // Bracketed address always wins over everything else
   const bracketMatch = line.match(/\[([^\]]+)\]/)
   if (bracketMatch) return bracketMatch[1].trim()
-  const colonIdx = line.indexOf(':')
-  if (colonIdx > -1) {
-    const afterColon = line.slice(colonIdx + 1).trim()
-    if (afterColon.length > 0) return afterColon
+
+  // Bullet-format lines (wrestling style): "- Lunch: Roxa or Board and Brew"
+  // Only search for a colon in lines that start with a bullet marker
+  const trimmed = line.trim()
+  if (trimmed.startsWith('-') || trimmed.startsWith('•') || trimmed.startsWith('*')) {
+    const colonIdx = trimmed.indexOf(':')
+    if (colonIdx > -1) {
+      const afterColon = trimmed.slice(colonIdx + 1).trim()
+      if (afterColon.length > 0) return afterColon
+    }
+    return ''
   }
+
+  // Time-prefixed lines (baseball style): "8:30 PM CST Dinner - at Hotel"
+  // Look for a " - " separator after the time, NOT the colon inside the time
+  const dashMatch = trimmed.match(/\s-\s(.+)$/)
+  if (dashMatch) return dashMatch[1].trim()
+
+  // No useful notes extractable from this line
   return ''
 }
 
@@ -179,7 +194,7 @@ export function parseAthleticsEmailToDraft({ text, year = 2026, defaultTimezone 
 
     rows.push({
       date: currentDate || toIsoDate({ year, month: 1, day: 1 }),
-      time: time || 'TBD',
+      time: time || null,
       timezone,
       mealType,
       locationType,

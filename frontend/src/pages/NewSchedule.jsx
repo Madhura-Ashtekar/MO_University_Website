@@ -280,6 +280,8 @@ function Step2MealPlan({ S, upd, schNext, toggleDay, addRow, delRow, updRow }) {
                       <option value="hotel">Hotel</option>
                       <option value="field">Field / Stadium</option>
                       <option value="restaurant">Restaurant</option>
+                      <option value="airport">Airport</option>
+                      <option value="perdiem">Per Diem</option>
                       <option value="bus">On Bus</option>
                     </select>
                     <input className="form-field" placeholder="e.g. Italian, Boxed, TBD..." value={r.notes} onChange={(e) => updRow(d, i, 'notes', e.target.value)} />

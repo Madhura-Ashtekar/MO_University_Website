@@ -168,6 +168,7 @@ def get_workflow(workflow_id: str):
         state=w.state,
         game_date=w.game_date,
         game_time=w.game_time,
+        dietary_notes=w.dietary_notes,
         status=w.status,
         executions=[e.model_dump() for e in ex],
         queue_open=[qi.model_dump() for qi in q],
@@ -206,6 +207,7 @@ def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
         mo_fulfills, fulfillment_type = classify(row.mealType, row.locationType, row.notes)
         event_context = derive_event_context(row.mealType, row.locationType, row.notes)
         status = "context_only" if fulfillment_type == "not_mo" else "submitted"
+        unit_price = float(row.budget) if row.budget is not None else 0.0
         exe = Execution(
             workflow_id=workflow_id,
             date=row.date,
@@ -220,6 +222,8 @@ def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
             fulfillment_type=fulfillment_type,
             headcount=row.headcount,
             dietary_counts=row.dietaryCounts or {},
+            unit_price=unit_price,
+            total_price=unit_price * row.headcount,
             status=status,
         )
         executions.append(exe)
@@ -303,10 +307,11 @@ def resolve_tbd(payload: ResolveTbdRequest):
         if not exe:
             raise HTTPException(status_code=404, detail="execution not found")
 
+        ft = payload.fulfillment_type if payload.fulfillment_type in ("mo_delivery", "mo_pickup") else "mo_delivery"
         exe.notes = payload.vendor_note.strip()
         exe.location_type = "restaurant"
         exe.mo_fulfills = True
-        exe.fulfillment_type = "mo_delivery"
+        exe.fulfillment_type = ft
         exe.status = "submitted"
         exe.event_context = derive_event_context(exe.meal_type, exe.location_type, exe.notes)
         exe.updated_at = datetime.utcnow()
@@ -379,6 +384,42 @@ def list_admin_queue_open():
     with Session(engine) as session:
         q = session.exec(select(AdminQueueItem).where(AdminQueueItem.status == "open").order_by(AdminQueueItem.created_at.desc())).all()
     return {"items": [qi.model_dump() for qi in q]}
+
+
+@app.get("/calendar")
+def get_calendar(month: str):
+    """Returns executions for a given month (YYYY-MM) with workflow context."""
+    with Session(engine) as session:
+        executions = session.exec(
+            select(Execution).where(Execution.date.startswith(month))
+        ).all()
+        if not executions:
+            return {"events": []}
+        wf_ids = list({e.workflow_id for e in executions})
+        workflows = session.exec(select(Workflow).where(Workflow.id.in_(wf_ids))).all()
+
+    wf_map = {w.id: w for w in workflows}
+    events = []
+    for e in executions:
+        wf = wf_map.get(e.workflow_id)
+        events.append({
+            "id": e.id,
+            "workflow_id": e.workflow_id,
+            "date": e.date,
+            "time": e.time,
+            "timezone": e.timezone,
+            "meal_type": e.meal_type,
+            "location_type": e.location_type,
+            "notes": e.notes,
+            "headcount": e.headcount,
+            "fulfillment_type": e.fulfillment_type,
+            "team_name": wf.team_name if wf else "Unknown",
+            "sport": wf.sport if wf else None,
+            "workflow_name": wf.name if wf else "Unknown",
+        })
+    # Sort by date then time (nulls last)
+    events.sort(key=lambda x: (x["date"], x["time"] or "99:99"))
+    return {"events": events}
 
 
 @app.get("/analytics/budget")

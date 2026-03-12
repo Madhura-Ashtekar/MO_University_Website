@@ -67,7 +67,7 @@ class Execution(SQLModel, table=True):
 
     # Layer 3 - Order
     date: str
-    time: str
+    time: Optional[str] = None  # HH:MM (24h). None when time is unknown from email
     timezone: str = Field(default="America/New_York")
 
     meal_type: str

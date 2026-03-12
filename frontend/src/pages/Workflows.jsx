@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 import { statusLabel, fulfillmentLabel, queueTypeLabel, tzShort, fmtDate, fmtTime12 } from '../utils/format'
 
 export function PageWorkflows({ go, showToast }) {
+  const [searchParams] = useSearchParams()
   const [rightTab, setRightTab] = useState('workflow')
   const [search, setSearch] = useState('')
   const [workflows, setWorkflows] = useState([])
@@ -10,45 +12,45 @@ export function PageWorkflows({ go, showToast }) {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(null)
   const [detail, setDetail] = useState(null)
   const [adminQueue, setAdminQueue] = useState([])
-  const [resolveDraft, setResolveDraft] = useState({ executionId: null, vendor: '' })
+  const [resolveDraft, setResolveDraft] = useState({ executionId: null, vendor: '', fulfillmentType: 'mo_delivery' })
   const [editDraft, setEditDraft] = useState(null)
 
-  const refreshAll = useCallback(async ({ keepSelection = true } = {}) => {
-    const [list, q] = await Promise.all([
-      apiFetch('/workflows'),
-      apiFetch('/admin/queue'),
-    ])
+  // Use a ref so refreshAll can access latest selectedWorkflowId without being in its dep array
+  const selectedIdRef = useRef(selectedWorkflowId)
+  useEffect(() => { selectedIdRef.current = selectedWorkflowId }, [selectedWorkflowId])
+
+  const refreshList = useCallback(async () => {
+    const [list, q] = await Promise.all([apiFetch('/workflows'), apiFetch('/admin/queue')])
     setWorkflows(list)
     setAdminQueue(q.items || [])
-    if (!keepSelection || !selectedWorkflowId) {
-      const firstId = list[0]?.id || null
-      setSelectedWorkflowId(firstId)
-      if (firstId) setDetail(await apiFetch(`/workflows/${firstId}`))
-      else setDetail(null)
-    } else if (selectedWorkflowId && !list.some((w) => w.id === selectedWorkflowId)) {
-      const firstId = list[0]?.id || null
-      setSelectedWorkflowId(firstId)
-      if (firstId) setDetail(await apiFetch(`/workflows/${firstId}`))
-      else setDetail(null)
-    } else if (selectedWorkflowId) {
-      setDetail(await apiFetch(`/workflows/${selectedWorkflowId}`))
-    }
-    setLoading(false)
-  }, [selectedWorkflowId])
-
-  useEffect(() => {
-    refreshAll().catch((e) => { showToast(e.message, 'error'); setLoading(false) })
+    return list
   }, [])
 
+  const refreshDetail = useCallback(async (id) => {
+    if (!id) { setDetail(null); return }
+    const d = await apiFetch(`/workflows/${id}`)
+    setDetail(d)
+  }, [])
+
+  // Initial load + handle ?new=<id> from post-submit navigation
   useEffect(() => {
-    if (!selectedWorkflowId) {
-      setDetail(null)
-      return
-    }
-    apiFetch(`/workflows/${selectedWorkflowId}`)
-      .then(setDetail)
+    const newId = searchParams.get('new')
+    refreshList()
+      .then((list) => {
+        const targetId = newId || list[0]?.id || null
+        setSelectedWorkflowId(targetId)
+        if (targetId) refreshDetail(targetId)
+        else setDetail(null)
+      })
       .catch((e) => showToast(e.message, 'error'))
-  }, [selectedWorkflowId, showToast])
+      .finally(() => setLoading(false))
+  }, [])  // run once on mount
+
+  // Refresh detail when user selects a different workflow
+  useEffect(() => {
+    if (!selectedWorkflowId) { setDetail(null); return }
+    refreshDetail(selectedWorkflowId).catch((e) => showToast(e.message, 'error'))
+  }, [selectedWorkflowId, refreshDetail, showToast])
 
   const filteredWorkflows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -70,6 +72,11 @@ export function PageWorkflows({ go, showToast }) {
       homeAwayNeutral: detail.home_away_neutral,
       opponent: detail.opponent,
       venueName: detail.venue_name,
+      city: detail.city,
+      state: detail.state,
+      gameDate: detail.game_date,
+      gameTime: detail.game_time,
+      dietaryNotes: detail.dietary_notes,
       status: detail.status,
       queueOpen: detail.queue_open || [],
     }
@@ -84,11 +91,14 @@ export function PageWorkflows({ go, showToast }) {
       time: e.time,
       timezone: e.timezone,
       mealType: e.meal_type,
+      serviceStyle: e.service_style,
       locationType: e.location_type,
       notes: e.notes,
       eventContext: e.event_context,
       fulfillmentType: e.fulfillment_type,
       moFulfills: e.mo_fulfills,
+      headcount: e.headcount,
+      dietaryCounts: e.dietary_counts || {},
       status: e.status,
     }))
   }, [detail])
@@ -96,41 +106,53 @@ export function PageWorkflows({ go, showToast }) {
   const openQueue = useMemo(() => (adminQueue || []).filter((q) => q.status === 'open'), [adminQueue])
 
   const grouped = useMemo(() => {
-    const mo = []
-    const tbd = []
-    const notMo = []
+    const mo = [], tbd = [], notMo = []
     for (const e of executions) {
       if (e.fulfillmentType === 'tbd') tbd.push(e)
       else if (e.fulfillmentType === 'not_mo') notMo.push(e)
       else mo.push(e)
     }
-    const byDate = (arr) => [...arr].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+    const byDate = (arr) => [...arr].sort((a, b) => {
+      const da = `${a.date} ${a.time || '99:99'}`
+      const db = `${b.date} ${b.time || '99:99'}`
+      return da.localeCompare(db)
+    })
     return { mo: byDate(mo), tbd: byDate(tbd), notMo: byDate(notMo) }
   }, [executions])
 
-  const fmtExecTitle = (e) => `${fmtDate(e.date)} · ${fmtTime12(e.time)} · ${e.mealType}`
+  const fmtExecTitle = (e) => {
+    if (!e?.date) return '—'
+    return `${fmtDate(e.date)} · ${e.time ? fmtTime12(e.time) : 'Time TBD'} · ${e.mealType}`
+  }
 
   const resolveTbd = async () => {
     if (!resolveDraft.executionId || !resolveDraft.vendor.trim()) return
     await apiFetch('/admin/resolve-tbd', {
       method: 'POST',
-      body: { execution_id: resolveDraft.executionId, vendor_note: resolveDraft.vendor.trim() },
+      body: {
+        execution_id: resolveDraft.executionId,
+        vendor_note: resolveDraft.vendor.trim(),
+        fulfillment_type: resolveDraft.fulfillmentType,
+      },
     })
     showToast('TBD resolved!')
-    setResolveDraft({ executionId: null, vendor: '' })
-    await refreshAll({ keepSelection: true })
+    setResolveDraft({ executionId: null, vendor: '', fulfillmentType: 'mo_delivery' })
+    await refreshList()
+    await refreshDetail(selectedIdRef.current)
   }
 
   const saveExecution = async (executionId, fields) => {
     await apiFetch(`/executions/${executionId}`, { method: 'PATCH', body: fields })
     showToast('Changes saved')
-    await refreshAll({ keepSelection: true })
+    await refreshList()
+    await refreshDetail(selectedIdRef.current)
   }
 
   const advance = async (workflowId, action) => {
     await apiFetch(`/admin/workflows/${workflowId}/advance`, { method: 'POST', body: { action } })
     showToast('Workflow advanced')
-    await refreshAll({ keepSelection: true })
+    await refreshList()
+    await refreshDetail(selectedIdRef.current)
   }
 
   if (loading) {
@@ -146,12 +168,15 @@ export function PageWorkflows({ go, showToast }) {
 
   return (
     <div className="page" style={{ padding: '28px 32px', maxWidth: 1200 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 18, alignItems: 'start' }}>
+
+        {/* Left: Workflow list */}
         <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
           <div style={{ padding: '18px 22px', borderBottom: '1px solid #EEF1F5', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="material-symbols-outlined" style={{ color: '#0F62FE' }}>list_alt</span>
               <span style={{ fontSize: 16, fontWeight: 800 }}>Workflows</span>
+              <span className="badge badge-gray" style={{ fontSize: 11 }}>{workflows.length}</span>
             </div>
             <button className="btn-primary" onClick={() => go('new-schedule')}>
               <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'white' }}>add</span> New
@@ -160,29 +185,29 @@ export function PageWorkflows({ go, showToast }) {
           <div style={{ padding: 16, borderBottom: '1px solid #EEF1F5' }}>
             <input className="form-field" placeholder="Search workflows..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
             {filteredWorkflows.map((w) => {
               const active = w.id === selectedWorkflowId
               const counts = w.counts || {}
+              const isNew = searchParams.get('new') === w.id
               return (
                 <div
                   key={w.id}
                   className="hover-lift"
                   onClick={() => { setSelectedWorkflowId(w.id); setRightTab('workflow') }}
                   style={{
-                    border: active ? '2px solid #0F62FE' : '1.5px solid #E2E8F0',
-                    background: active ? '#EBF2FF' : 'white',
-                    borderRadius: 12,
-                    padding: 14,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
+                    border: active ? '2px solid #0F62FE' : isNew ? '2px solid #24A148' : '1.5px solid #E2E8F0',
+                    background: active ? '#EBF2FF' : isNew ? '#F0FFF4' : 'white',
+                    borderRadius: 12, padding: 14,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                     cursor: 'pointer',
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                      {isNew && <span className="badge badge-green" style={{ fontSize: 9, padding: '1px 5px' }}>NEW</span>}
+                      <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</div>
+                    </div>
                     <div style={{ fontSize: 12, color: '#718096' }}>{w.team_name}{w.sport ? ` · ${w.sport}` : ''}</div>
                     <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <span className="badge badge-green">{counts.mo ?? 0} MO</span>
@@ -195,13 +220,15 @@ export function PageWorkflows({ go, showToast }) {
               )
             })}
             {workflows.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', color: '#718096' }}>
-                No workflows yet. Create a schedule or submit intake.
+              <div style={{ padding: 32, textAlign: 'center', color: '#718096' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 36, color: '#CBD5E0', marginBottom: 12 }}>list_alt</span>
+                <div style={{ fontSize: 13 }}>No workflows yet. Create a schedule or submit intake.</div>
               </div>
             )}
           </div>
         </div>
 
+        {/* Right: Detail panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
             <div style={{ padding: '12px 14px', borderBottom: '1px solid #EEF1F5', display: 'flex', gap: 10 }}>
@@ -209,44 +236,37 @@ export function PageWorkflows({ go, showToast }) {
                 Workflow
               </button>
               <button className={rightTab === 'queue' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => setRightTab('queue')}>
-                Admin Queue <span className="badge badge-orange" style={{ marginLeft: 8 }}>{openQueue.length}</span>
+                Admin Queue <span className="badge badge-orange" style={{ marginLeft: 6 }}>{openQueue.length}</span>
               </button>
             </div>
 
             {rightTab === 'queue' && (
-              <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {openQueue.slice(0, 12).map((q) => {
+              <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 600, overflowY: 'auto' }}>
+                {openQueue.slice(0, 15).map((q) => {
                   const execForItem = executions.find(e => e.id === q.execution_id)
                   return (
                     <div key={q.id} style={{ border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 900 }}>{queueTypeLabel(q.type)}</div>
-                      <div style={{ fontSize: 12, color: '#718096', marginTop: 4 }}>
-                        {execForItem
-                          ? `${fmtDate(execForItem.date)} · ${fmtTime12(execForItem.time)} · ${execForItem.mealType}`
-                          : `Workflow-level action`
-                        }
+                      <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 4 }}>{queueTypeLabel(q.type)}</div>
+                      <div style={{ fontSize: 12, color: '#718096' }}>
+                        {execForItem ? fmtExecTitle(execForItem) : 'Workflow-level action'}
                       </div>
                       <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         <button className="btn-secondary" style={{ padding: 8, fontSize: 12, justifyContent: 'center' }} onClick={() => {
                           setSelectedWorkflowId(q.workflow_id)
                           setRightTab('workflow')
-                          if (q.type === 'resolve_tbd') setResolveDraft({ executionId: q.execution_id, vendor: '' })
-                        }}>
-                          Open
-                        </button>
+                          if (q.type === 'resolve_tbd') setResolveDraft({ executionId: q.execution_id, vendor: '', fulfillmentType: 'mo_delivery' })
+                        }}>Open</button>
                         <button className="btn-primary" style={{ padding: 8, fontSize: 12, justifyContent: 'center' }} onClick={() => {
                           if (q.type === 'resolve_tbd') {
                             setSelectedWorkflowId(q.workflow_id)
                             setRightTab('workflow')
-                            setResolveDraft({ executionId: q.execution_id, vendor: '' })
+                            setResolveDraft({ executionId: q.execution_id, vendor: '', fulfillmentType: 'mo_delivery' })
                             return
                           }
                           const action = q.type === 'feasibility' ? 'feasibility_approve' : q.type === 'billing_prep' ? 'billing_prep' : q.type === 'dispatch_approval' ? 'dispatch_approve' : null
                           if (!action) return
                           advance(q.workflow_id, action).catch((e) => showToast(e.message, 'error'))
-                        }}>
-                          Take Action
-                        </button>
+                        }}>Take Action</button>
                       </div>
                     </div>
                   )
@@ -256,13 +276,13 @@ export function PageWorkflows({ go, showToast }) {
             )}
 
             {rightTab === 'workflow' && (
-              <div style={{ padding: 14 }}>
-                {!selectedWorkflow && <div style={{ padding: 16, textAlign: 'center', color: '#718096' }}>Select a workflow to review.</div>}
+              <div style={{ padding: 14, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+                {!selectedWorkflow && <div style={{ padding: 24, textAlign: 'center', color: '#718096' }}>Select a workflow to review.</div>}
                 {selectedWorkflow && (
                   <>
                     <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 12 }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 900, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedWorkflow.name}</div>
+                        <div style={{ fontSize: 14, fontWeight: 900, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedWorkflow.name}</div>
                         <div style={{ fontSize: 12, color: '#718096' }}>{selectedWorkflow.teamName}{selectedWorkflow.sport ? ` · ${selectedWorkflow.sport}` : ''}</div>
                         <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <span className="badge badge-green">{grouped.mo.length} MO</span>
@@ -273,53 +293,66 @@ export function PageWorkflows({ go, showToast }) {
                       <span className="badge badge-blue" style={{ whiteSpace: 'nowrap' }}>{statusLabel(selectedWorkflow.status)}</span>
                     </div>
 
+                    {/* Trip Details */}
                     <div style={{ marginTop: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 12 }}>
                       <div style={{ fontSize: 11, fontWeight: 900, color: '#A0AEC0', letterSpacing: '0.08em', marginBottom: 8 }}>TRIP DETAILS</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#718096', fontWeight: 800, marginBottom: 2 }}>School</div>
-                          <div style={{ fontSize: 12 }}>{selectedWorkflow.schoolName || '\u2014'}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#718096', fontWeight: 800, marginBottom: 2 }}>Conference / Division</div>
-                          <div style={{ fontSize: 12 }}>{selectedWorkflow.conference || '\u2014'} \u00B7 {selectedWorkflow.division || '\u2014'}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#718096', fontWeight: 800, marginBottom: 2 }}>Trip Type</div>
-                          <div style={{ fontSize: 12 }}>{selectedWorkflow.tripType || '\u2014'} \u00B7 {selectedWorkflow.homeAwayNeutral || '\u2014'}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: '#718096', fontWeight: 800, marginBottom: 2 }}>Opponent / Venue</div>
-                          <div style={{ fontSize: 12 }}>{selectedWorkflow.opponent || '\u2014'} @ {selectedWorkflow.venueName || '\u2014'}</div>
-                        </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        {[
+                          ['School', selectedWorkflow.schoolName],
+                          ['Conf / Div', `${selectedWorkflow.conference || '—'} · ${selectedWorkflow.division || '—'}`],
+                          ['Trip / Mode', `${selectedWorkflow.tripType || '—'} · ${selectedWorkflow.homeAwayNeutral || '—'}`],
+                          ['Opponent', selectedWorkflow.opponent],
+                          ['Venue', selectedWorkflow.venueName],
+                          ['Location', `${selectedWorkflow.city || '—'}, ${selectedWorkflow.state || '—'}`],
+                          ['Game Date', selectedWorkflow.gameDate ? fmtDate(selectedWorkflow.gameDate) : null],
+                          ['Game Time', selectedWorkflow.gameTime ? fmtTime12(selectedWorkflow.gameTime) : null],
+                        ].map(([label, val]) => (
+                          <div key={label}>
+                            <div style={{ fontSize: 10, color: '#718096', fontWeight: 800, marginBottom: 1 }}>{label}</div>
+                            <div style={{ fontSize: 12 }}>{val || '—'}</div>
+                          </div>
+                        ))}
                       </div>
+                      {selectedWorkflow.dietaryNotes && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #E2E8F0' }}>
+                          <div style={{ fontSize: 10, color: '#718096', fontWeight: 800, marginBottom: 4 }}>DIETARY NOTES</div>
+                          <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>{selectedWorkflow.dietaryNotes}</div>
+                        </div>
+                      )}
                     </div>
 
+                    {/* TBD Resolve Panel */}
                     {resolveDraft.executionId && (
                       <div style={{ marginTop: 14, background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                           <div style={{ fontSize: 12, fontWeight: 900, color: '#92400E' }}>Resolve TBD Meal</div>
-                          <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setResolveDraft({ executionId: null, vendor: '' })}>Close</button>
+                          <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setResolveDraft({ executionId: null, vendor: '', fulfillmentType: 'mo_delivery' })}>Close</button>
                         </div>
                         <div style={{ fontSize: 12, color: '#92400E', marginTop: 6 }}>
-                          {fmtExecTitle(executions.find((e) => e.id === resolveDraft.executionId) || { date: '', time: '', mealType: '' })}
+                          {fmtExecTitle(executions.find((e) => e.id === resolveDraft.executionId) || {})}
                         </div>
-                        <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
-                          <input className="form-field" value={resolveDraft.vendor} onChange={(e) => setResolveDraft((p) => ({ ...p, vendor: e.target.value }))} placeholder="Vendor name + address" />
+                        <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                          <input className="form-field" style={{ flex: 1 }} value={resolveDraft.vendor} onChange={(e) => setResolveDraft((p) => ({ ...p, vendor: e.target.value }))} placeholder="Vendor name + address" />
+                          <select className="form-field" style={{ width: 130 }} value={resolveDraft.fulfillmentType} onChange={(e) => setResolveDraft((p) => ({ ...p, fulfillmentType: e.target.value }))}>
+                            <option value="mo_delivery">MO Delivery</option>
+                            <option value="mo_pickup">MO Pickup</option>
+                          </select>
                         </div>
                         <div style={{ marginTop: 10, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                          <button className="btn-secondary" onClick={() => setResolveDraft({ executionId: null, vendor: '' })}>Cancel</button>
+                          <button className="btn-secondary" onClick={() => setResolveDraft({ executionId: null, vendor: '', fulfillmentType: 'mo_delivery' })}>Cancel</button>
                           <button className="btn-primary" disabled={!resolveDraft.vendor.trim()} onClick={() => resolveTbd().catch((e) => showToast(e.message, 'error'))}>Mark Resolved</button>
                         </div>
                       </div>
                     )}
 
+                    {/* Executions grouped */}
                     <div style={{ marginTop: 14 }}>
-                      <ExecutionSection title="TBD \u2014 Needs Vendor" badgeClass="badge-amber" rows={grouped.tbd} onResolve={(e) => setResolveDraft({ executionId: e.id, vendor: e.notes || '' })} onEdit={(e) => setEditDraft({ executionId: e.id, fields: { ...e } })} />
+                      <ExecutionSection title="TBD — Needs Vendor" badgeClass="badge-amber" rows={grouped.tbd} onResolve={(e) => setResolveDraft({ executionId: e.id, vendor: e.notes || '', fulfillmentType: 'mo_delivery' })} onEdit={(e) => setEditDraft({ executionId: e.id, fields: { ...e } })} />
                       <ExecutionSection title="MO Executing" badgeClass="badge-green" rows={grouped.mo} onEdit={(e) => setEditDraft({ executionId: e.id, fields: { ...e } })} />
                       <ExecutionSection title="Not MO (Logged Only)" badgeClass="badge-gray" rows={grouped.notMo} onEdit={(e) => setEditDraft({ executionId: e.id, fields: { ...e } })} />
                     </div>
 
+                    {/* Edit execution panel */}
                     {editDraft?.executionId && (
                       <div style={{ marginTop: 14, background: 'white', border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -373,12 +406,8 @@ export function PageWorkflows({ go, showToast }) {
                               notes: editDraft.fields.notes,
                               fulfillmentType: editDraft.fields.fulfillmentType,
                               eventContext: editDraft.fields.eventContext,
-                            })
-                              .then(() => setEditDraft(null))
-                              .catch((e) => showToast(e.message, 'error'))
-                          }}>
-                            Save Changes
-                          </button>
+                            }).then(() => setEditDraft(null)).catch((e) => showToast(e.message, 'error'))
+                          }}>Save Changes</button>
                         </div>
                       </div>
                     )}
@@ -397,7 +426,6 @@ function ExecutionSection({ title, badgeClass, rows, onResolve, onEdit }) {
   const [expanded, setExpanded] = useState(false)
   const LIMIT = 8
   const visible = expanded ? rows : rows.slice(0, LIMIT)
-  const hasMore = rows.length > LIMIT
 
   return (
     <div style={{ marginBottom: 12, border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
@@ -409,36 +437,38 @@ function ExecutionSection({ title, badgeClass, rows, onResolve, onEdit }) {
         <div style={{ padding: 12, color: '#718096', fontSize: 12 }}>No items.</div>
       ) : (
         <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {visible.map((e) => (
-            <div key={e.id} style={{ border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {fmtDate(e.date)} · {fmtTime12(e.time)} · {e.mealType}
+          {visible.map((e) => {
+            const dietary = Object.entries(e.dietaryCounts || {}).filter(([, v]) => v > 0)
+            return (
+              <div key={e.id} style={{ border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: dietary.length > 0 ? 6 : 0 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {fmtDate(e.date)} · {e.time ? fmtTime12(e.time) : 'Time TBD'} · {e.mealType}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#718096', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      {e.notes && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{e.notes}</span>}
+                      {e.headcount > 0 && <span style={{ color: '#A0AEC0' }}>· {e.headcount} pax</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                    {e.timezone && <span className="badge badge-blue">{tzShort(e.timezone)}</span>}
+                    {onResolve && <button className="btn-secondary" style={{ padding: '5px 8px', fontSize: 11 }} onClick={() => onResolve(e)}>Resolve</button>}
+                    {onEdit && <button className="btn-secondary" style={{ padding: '5px 8px', fontSize: 11 }} onClick={() => onEdit(e)}>Edit</button>}
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: '#718096', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {e.notes || '\u2014'}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span className="badge badge-blue">{tzShort(e.timezone)}</span>
-                {onResolve && (
-                  <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => onResolve(e)}>
-                    Resolve
-                  </button>
-                )}
-                {onEdit && (
-                  <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => onEdit(e)}>
-                    Edit
-                  </button>
+                {dietary.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {dietary.map(([k, v]) => (
+                      <span key={k} style={{ fontSize: 10, background: '#DEFBE6', color: '#14532D', padding: '2px 6px', borderRadius: 6, fontWeight: 700 }}>{k}: {v}</span>
+                    ))}
+                  </div>
                 )}
               </div>
-            </div>
-          ))}
-          {hasMore && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              style={{ padding: '6px 2px', color: '#0F62FE', fontSize: 12, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-            >
+            )
+          })}
+          {rows.length > LIMIT && (
+            <button onClick={() => setExpanded(!expanded)} style={{ padding: '6px 2px', color: '#0F62FE', fontSize: 12, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
               {expanded ? 'Show less' : `Show all ${rows.length} meals`}
             </button>
           )}

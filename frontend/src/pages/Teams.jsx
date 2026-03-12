@@ -62,8 +62,8 @@ export function PageTeams({ showToast }) {
               </div>
 
               <div style={{ display: 'flex', gap: 10 }}>
-                <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }}>View Roster</button>
-                <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }}>Edit Prefs</button>
+                <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => showToast('Roster management coming soon!')}>View Roster</button>
+                <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => showToast('Dietary preferences editor coming soon!')}>Edit Prefs</button>
               </div>
             </div>
           ))}

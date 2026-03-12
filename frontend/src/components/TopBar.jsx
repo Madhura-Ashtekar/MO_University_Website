@@ -29,7 +29,7 @@ export function TopBar({ title, crumbs, extra, go, toggleChat, demoMeta, serverH
           </span>
         </div>
         {extra || null}
-        <button className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }}>
+        <button className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => go('workflows')}>
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span> Search
         </button>
         <button className="btn-primary" style={{ padding: '8px 14px', fontSize: 13, background: '#EBF2FF', color: '#0F62FE', border: 'none' }} onClick={toggleChat}>
