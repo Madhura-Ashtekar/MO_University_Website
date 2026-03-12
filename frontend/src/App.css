@@ -56,7 +56,11 @@ tr.data-row:hover td { background:#F8FAFC; }
 .action-card:hover .action-arr { opacity:1; transform:translateX(0); }
 .action-arr { opacity:0; transform:translateX(-4px); transition:all 0.18s; color:#0F62FE; flex-shrink:0; }
 
-/* Toasts */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 @keyframes slideIn {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }

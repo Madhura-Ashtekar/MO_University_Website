@@ -1,5 +1,4 @@
 import React from 'react'
-import { getApiBase } from '../api/client'
 
 export function TopBar({ title, crumbs, extra, go, toggleChat, demoMeta, serverHealthy }) {
   return (
@@ -23,12 +22,10 @@ export function TopBar({ title, crumbs, extra, go, toggleChat, demoMeta, serverH
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 12, background: serverHealthy ? '#F8FAFC' : '#FFF1F2', border: `1px solid ${serverHealthy ? '#E2E8F0' : '#FECDD3'}` }}>
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', color: serverHealthy ? '#0F62FE' : '#9B1C1C' }}>
-            {serverHealthy ? 'BACKEND LIVE' : 'BACKEND OFFLINE'}
-          </span>
-          <span style={{ fontSize: 11, color: serverHealthy ? '#718096' : '#9B1C1C', whiteSpace: 'nowrap' }}>
-            {getApiBase()} · {demoMeta?.workflows ?? 0} workflows · {demoMeta?.openQueue ?? 0} queued · {demoMeta?.openTbd ?? 0} TBD
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 12, background: serverHealthy ? '#F0FFF4' : '#FFF1F2', border: `1px solid ${serverHealthy ? '#C6F6D5' : '#FECDD3'}` }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: serverHealthy ? '#38A169' : '#E53E3E' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: serverHealthy ? '#276749' : '#9B1C1C' }}>
+            {serverHealthy ? 'Connected' : 'Offline'}
           </span>
         </div>
         {extra || null}
@@ -36,7 +33,7 @@ export function TopBar({ title, crumbs, extra, go, toggleChat, demoMeta, serverH
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span> Search
         </button>
         <button className="btn-primary" style={{ padding: '8px 14px', fontSize: 13, background: '#EBF2FF', color: '#0F62FE', border: 'none' }} onClick={toggleChat}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>auto_awesome</span> Plan with AI
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>auto_awesome</span> AI Assistant
         </button>
       </div>
     </div>

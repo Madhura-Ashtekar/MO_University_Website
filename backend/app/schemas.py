@@ -53,6 +53,7 @@ class WorkflowCreateFromDraft(BaseModel):
     state: Optional[str] = None
     gameDate: Optional[str] = None
     gameTime: Optional[str] = None
+    dietaryNotes: Optional[str] = None
     rows: List[IntakeRowIn]
 
 

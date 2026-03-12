@@ -19,7 +19,7 @@ export function PageTeams({ showToast }) {
           <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>Teams</h2>
           <p style={{ color: '#718096', margin: 0 }}>Manage rosters and team-specific preferences.</p>
         </div>
-        <button className="btn-primary" onClick={() => window.alert('Add Team coming soon')}>
+        <button className="btn-primary" onClick={() => showToast('Add Team feature coming soon!')}>
           <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'white' }}>add</span> New Team
         </button>
       </div>

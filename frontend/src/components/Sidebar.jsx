@@ -9,7 +9,7 @@ export function Sidebar({ navItems, page, go }) {
         </div>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#0D1117', lineHeight: 1 }}>Meal Outpost</div>
-          <div style={{ fontSize: 10, color: '#718096', marginTop: 2 }}>University of Virginia</div>
+          <div style={{ fontSize: 10, color: '#718096', marginTop: 2 }}>Athletics</div>
         </div>
       </div>
 
@@ -28,12 +28,14 @@ export function Sidebar({ navItems, page, go }) {
       </nav>
 
       <div style={{ borderTop: '1px solid #EEF1F5', paddingTop: 14, display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 4 }}>
-        <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjfWDdVfrveqyvGvHOoeAQ-5-h83Rt1oLXsxKzMY1dLKkXLYheTXGHQRKQStehfp-031fYsnHlhmcyhLCLxMiNevwKXu-oVNKhY9H8dFSfNS0qVsZzjlJybI-d1eUW9r67IwNMzmR9ktACivxGWAupQlvjkzVu9lqtuIR1b_U7q3LY7BG0uSWPfOTE9Fx4Hg66Kc8vAxSU2CaRxVi1GmcblmXIzOUGuYqY_D-Bojxa1NLu3uzo2pdGJ0h7-n3FiFW9ykY44vibkpW3" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', border: '2px solid #E2E8F0' }} alt="Jane Crawford" />
+        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EBF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #E2E8F0', flexShrink: 0 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#0F62FE' }}>person</span>
+        </div>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>Jane Crawford</div>
           <div style={{ fontSize: 10, color: '#718096' }}>Nutritionist</div>
         </div>
-        <button onClick={() => window.alert('Settings coming soon')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+        <button onClick={() => go('dashboard')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Settings">
           <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#A0AEC0' }}>settings</span>
         </button>
       </div>

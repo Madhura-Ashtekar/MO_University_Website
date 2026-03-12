@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useMemo } from 'react'
 
 export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, updRow, togglePref, updVeg, onSubmitSchedule }) {
   const steps = [
@@ -38,18 +38,18 @@ export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, up
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
             <div className="form-group">
-              <label>Schedule Name</label>
+              <label>Schedule Name <span style={{ color: '#EF4444' }}>*</span></label>
               <input className="form-field" placeholder="e.g. NCAA Regionals Travel" value={S.schName} onChange={(e) => upd('schName', e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Team Name</label>
+              <label>Team Name <span style={{ color: '#EF4444' }}>*</span></label>
               <input className="form-field" placeholder="e.g. Varsity Baseball" value={S.schTeam} onChange={(e) => upd('schTeam', e.target.value)} />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
             <div className="form-group">
-              <label>School Name</label>
+              <label>School Name <span style={{ color: '#EF4444' }}>*</span></label>
               <input className="form-field" placeholder="e.g. University of Virginia" value={S.schoolName} onChange={(e) => upd('schoolName', e.target.value)} />
             </div>
             <div className="form-group">
@@ -60,7 +60,7 @@ export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, up
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
             <div className="form-group">
-              <label>Sport</label>
+              <label>Sport <span style={{ color: '#EF4444' }}>*</span></label>
               <input className="form-field" placeholder="e.g. Baseball, Football" value={S.sport} onChange={(e) => upd('sport', e.target.value)} />
             </div>
             <div className="form-group">
@@ -73,9 +73,61 @@ export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, up
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div className="form-group">
+              <label>Trip Type</label>
+              <select className="form-field" value={S.tripType || 'overnight'} onChange={(e) => upd('tripType', e.target.value)}>
+                <option value="day_trip">Day Trip</option>
+                <option value="overnight">Overnight</option>
+                <option value="multi_day">Multi-Day</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Home / Away</label>
+              <select className="form-field" value={S.homeAwayNeutral || 'away'} onChange={(e) => upd('homeAwayNeutral', e.target.value)}>
+                <option value="home">Home</option>
+                <option value="away">Away</option>
+                <option value="neutral">Neutral</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div className="form-group">
+              <label>Opponent</label>
+              <input className="form-field" placeholder="e.g. NC State" value={S.opponent || ''} onChange={(e) => upd('opponent', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Venue Name</label>
+              <input className="form-field" placeholder="e.g. Scott Stadium" value={S.venueName || ''} onChange={(e) => upd('venueName', e.target.value)} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div className="form-group">
+              <label>City</label>
+              <input className="form-field" placeholder="e.g. Charlottesville" value={S.city || ''} onChange={(e) => upd('city', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>State</label>
+              <input className="form-field" placeholder="e.g. VA" value={S.state || ''} onChange={(e) => upd('state', e.target.value)} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div className="form-group">
+              <label>Game Date</label>
+              <input className="form-field" type="date" value={S.gameDate || ''} onChange={(e) => upd('gameDate', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Game Time</label>
+              <input className="form-field" type="time" value={S.gameTime || ''} onChange={(e) => upd('gameTime', e.target.value)} />
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
             <div className="form-group">
-              <label>Expected Headcount</label>
+              <label>Expected Headcount <span style={{ color: '#EF4444' }}>*</span></label>
               <div style={{ position: 'relative' }}>
                 <input className="form-field" type="number" value={S.schHeadcount} onChange={(e) => upd('schHeadcount', e.target.value)} />
                 <span style={{ position: 'absolute', right: 12, top: 12, fontSize: 12, color: '#A0AEC0', fontWeight: 600 }}>Athletes</span>
@@ -96,27 +148,44 @@ export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, up
         </div>
       )}
 
-      {S.schStep === 2 && <Step2MealPlan S={S} schNext={schNext} toggleDay={toggleDay} addRow={addRow} delRow={delRow} updRow={updRow} />}
-      {S.schStep === 3 && <Step3Dietary S={S} schNext={schNext} togglePref={togglePref} updVeg={updVeg} onSubmitSchedule={onSubmitSchedule} />}
+      {S.schStep === 2 && <Step2MealPlan S={S} upd={upd} schNext={schNext} toggleDay={toggleDay} addRow={addRow} delRow={delRow} updRow={updRow} />}
+      {S.schStep === 3 && <Step3Dietary S={S} upd={upd} schNext={schNext} togglePref={togglePref} updVeg={updVeg} onSubmitSchedule={onSubmitSchedule} />}
     </div>
   )
 }
 
-function MiniCal({ sel, onToggle }) {
-  const days = Array.from({ length: 28 }, (_, i) => i + 1)
-  const isS = (d) => sel.includes(`2026-02-${String(d).padStart(2, '0')}`)
+function MiniCal({ sel, onToggle, calYear, calMonth, onChangeMonth }) {
+  const year = calYear
+  const month = calMonth
+  const firstDow = new Date(year, month - 1, 1).getDay()
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  const monthName = new Date(year, month - 1).toLocaleString('en-US', { month: 'long' })
+
+  const isSelected = (d) => sel.includes(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
+
   return (
     <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', padding: 18 }}>
       <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>FEBRUARY 2026</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => onChangeMonth(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#718096' }}>chevron_left</span>
+          </button>
+          <span>{monthName} {year}</span>
+          <button onClick={() => onChangeMonth(1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#718096' }}>chevron_right</span>
+          </button>
+        </div>
         <span style={{ color: '#0F62FE' }}>{sel.length} Selected</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i} style={{ fontSize: 9, fontWeight: 800, color: '#A0AEC0', textAlign: 'center', paddingBottom: 4 }}>{d}</div>)}
+        {Array.from({ length: firstDow }, (_, i) => <div key={`pad-${i}`} />)}
         {days.map((d) => {
-          const s = isS(d)
+          const s = isSelected(d)
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
           return (
-            <div key={d} onClick={() => onToggle(`2026-02-${String(d).padStart(2, '0')}`)} style={{ 
+            <div key={d} onClick={() => onToggle(dateStr)} style={{ 
               height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
               cursor: 'pointer', background: s ? '#0F62FE' : 'transparent', color: s ? 'white' : '#475569', border: s ? 'none' : '1px solid transparent'
             }} className={!s ? 'cal-day-hover' : ''}>{d}</div>
@@ -127,21 +196,46 @@ function MiniCal({ sel, onToggle }) {
   )
 }
 
-function Step2MealPlan({ S, schNext, toggleDay, addRow, delRow, updRow }) {
+const TZ_OPTIONS = [
+  { value: 'America/New_York', label: 'ET' },
+  { value: 'America/Chicago', label: 'CT' },
+  { value: 'America/Denver', label: 'MT' },
+  { value: 'America/Los_Angeles', label: 'PT' },
+]
+
+function Step2MealPlan({ S, upd, schNext, toggleDay, addRow, delRow, updRow }) {
+  const [calYear, setCalYear] = useState(() => {
+    const now = new Date()
+    return now.getFullYear()
+  })
+  const [calMonth, setCalMonth] = useState(() => {
+    const now = new Date()
+    return now.getMonth() + 1
+  })
+
+  const changeMonth = (delta) => {
+    let m = calMonth + delta
+    let y = calYear
+    if (m < 1) { m = 12; y-- }
+    if (m > 12) { m = 1; y++ }
+    setCalMonth(m)
+    setCalYear(y)
+  }
+
   const days = (S.schDays.length > 0 ? [...S.schDays].sort() : [])
   const totalMeals = Object.values(S.mealRowsByDay).reduce((acc, arr) => acc + arr.filter(r => r.type && r.time).length, 0)
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 24, alignItems: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <MiniCal sel={S.schDays} onToggle={toggleDay} />
+        <MiniCal sel={S.schDays} onToggle={toggleDay} calYear={calYear} calMonth={calMonth} onChangeMonth={changeMonth} />
         <div style={{ background: '#F8FAFC', borderRadius: 16, border: '1.5px dashed #E2E8F0', padding: 18 }}>
           <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#0F62FE' }}>auto_awesome</span>
             <span style={{ fontSize: 12, fontWeight: 800, color: '#1E293B' }}>AI Suggestion</span>
           </div>
           <p style={{ fontSize: 11, color: '#64748B', lineHeight: 1.6, margin: 0 }}>
-            Based on your baseball team travel, I recommend a <strong>Post-Game Meal</strong> at 8:00 PM on game days.
+            Based on your {S.sport || 'team'} travel, I recommend a <strong>Post-Game Meal</strong> at 8:00 PM on game days.
           </p>
         </div>
       </div>
@@ -160,15 +254,15 @@ function Step2MealPlan({ S, schNext, toggleDay, addRow, delRow, updRow }) {
           return (
             <div key={d} style={{ background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid #EEF1F5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#FAFBFC' }}>
-                <span style={{ fontSize: 13, fontWeight: 800 }}>{new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</span>
+                <span style={{ fontSize: 13, fontWeight: 800 }}>{new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</span>
                 <span className="badge badge-blue">{rows.length} Meals</span>
               </div>
               <div style={{ padding: '8px 20px 20px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '120px 110px 140px 1fr 40px', gap: 12, padding: '10px 0', borderBottom: '1px solid #F4F6F9' }}>
-                  {['MEAL TYPE', 'TIME', 'LOCATION', 'NOTES / PREFS', ''].map(h => <span key={h} style={{ fontSize: 9, fontWeight: 800, color: '#A0AEC0', letterSpacing: '0.05em' }}>{h}</span>)}
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 110px 80px 140px 1fr 40px', gap: 12, padding: '10px 0', borderBottom: '1px solid #F4F6F9' }}>
+                  {['MEAL TYPE', 'TIME', 'TZ', 'LOCATION', 'NOTES / PREFS', ''].map(h => <span key={h} style={{ fontSize: 9, fontWeight: 800, color: '#A0AEC0', letterSpacing: '0.05em' }}>{h}</span>)}
                 </div>
                 {rows.map((r, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 110px 140px 1fr 40px', gap: 12, marginTop: 12 }}>
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 110px 80px 140px 1fr 40px', gap: 12, marginTop: 12 }}>
                     <select className="form-field" value={r.type} onChange={(e) => updRow(d, i, 'type', e.target.value)}>
                       <option value="">Select...</option>
                       <option value="Breakfast">Breakfast</option>
@@ -179,6 +273,9 @@ function Step2MealPlan({ S, schNext, toggleDay, addRow, delRow, updRow }) {
                       <option value="Snack">Snack</option>
                     </select>
                     <input className="form-field" type="time" value={r.time} onChange={(e) => updRow(d, i, 'time', e.target.value)} />
+                    <select className="form-field" value={r.tz || 'America/New_York'} onChange={(e) => updRow(d, i, 'tz', e.target.value)}>
+                      {TZ_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
                     <select className="form-field" value={r.loc} onChange={(e) => updRow(d, i, 'loc', e.target.value)}>
                       <option value="hotel">Hotel</option>
                       <option value="field">Field / Stadium</option>
@@ -223,7 +320,7 @@ function Step2MealPlan({ S, schNext, toggleDay, addRow, delRow, updRow }) {
   )
 }
 
-function Step3Dietary({ S, schNext, togglePref, updVeg, onSubmitSchedule }) {
+function Step3Dietary({ S, upd, schNext, togglePref, updVeg, onSubmitSchedule }) {
   const days = (S.schDays.length > 0 ? [...S.schDays].sort() : [])
   const rows = days.flatMap((d) => (S.mealRowsByDay[d] || []).map((r) => ({ ...r, date: d })))
   const validRows = rows.filter((r) => r.type && r.time)
@@ -231,6 +328,7 @@ function Step3Dietary({ S, schNext, togglePref, updVeg, onSubmitSchedule }) {
   const missing = []
   if (!S.schName?.trim()) missing.push('schedule name')
   if (!S.schTeam?.trim()) missing.push('team')
+  if (!S.schoolName?.trim()) missing.push('school name')
   if (!S.schHeadcount || Number.isNaN(Number(S.schHeadcount)) || Number(S.schHeadcount) <= 0) missing.push('headcount')
   if (days.length === 0) missing.push('at least one date')
   if (validRows.length === 0) missing.push('at least one meal row (meal type + time)')
@@ -241,7 +339,7 @@ function Step3Dietary({ S, schNext, togglePref, updVeg, onSubmitSchedule }) {
         <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <div style={{ padding: '16px 22px', borderBottom: '1px solid #EEF1F5', display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 26, height: 26, background: '#0F62FE', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <span style={{ color: 'white', fontSize: 13, fontWeight: 800 }}>4</span>
+              <span style={{ color: 'white', fontSize: 13, fontWeight: 800 }}>3</span>
             </div>
             <span style={{ fontSize: 15, fontWeight: 700 }}>Dietary Rules & Restrictions</span>
           </div>
@@ -274,14 +372,20 @@ function Step3Dietary({ S, schNext, togglePref, updVeg, onSubmitSchedule }) {
             </div>
 
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>Additional Restrictions</label>
-            <textarea className="form-field" rows={3} placeholder="No pork, severe shellfish allergy for 2 athletes, 1 diabetic needing carb counts…" style={{ resize: 'vertical' }} />
+            <textarea
+              className="form-field"
+              rows={3}
+              placeholder="No pork, severe shellfish allergy for 2 athletes, 1 diabetic needing carb counts..."
+              style={{ resize: 'vertical' }}
+              value={S.dietaryNotes || ''}
+              onChange={(e) => upd('dietaryNotes', e.target.value)}
+            />
           </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <button className="btn-secondary" onClick={() => schNext(2)}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_back</span> Back</button>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn-secondary" onClick={() => window.alert('Draft saved!')}>Save Draft</button>
             <button
               className="btn-primary"
               disabled={missing.length > 0}
@@ -295,14 +399,19 @@ function Step3Dietary({ S, schNext, togglePref, updVeg, onSubmitSchedule }) {
                   division: S.division || 'DI',
                   headcount: Number(S.schHeadcount),
                   sport: S.sport,
-                  tripType: 'overnight', // default for now
-                  homeAwayNeutral: 'away', // default for now
-                  opponent: null,
-                  venueName: null,
+                  tripType: S.tripType || 'overnight',
+                  homeAwayNeutral: S.homeAwayNeutral || 'away',
+                  opponent: S.opponent || null,
+                  venueName: S.venueName || null,
+                  city: S.city || null,
+                  state: S.state || null,
+                  gameDate: S.gameDate || null,
+                  gameTime: S.gameTime || null,
+                  dietaryNotes: S.dietaryNotes || null,
                   rows: validRows.map((r) => ({
                     date: r.date,
                     time: r.time,
-                    timezone: 'America/New_York',
+                    timezone: r.tz || 'America/New_York',
                     mealType: r.type,
                     locationType: r.loc,
                     notes: r.notes,
@@ -335,37 +444,24 @@ function Step3Dietary({ S, schNext, togglePref, updVeg, onSubmitSchedule }) {
               <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#0F62FE' }}>receipt_long</span>
               <span style={{ fontWeight: 700 }}>Order Summary</span>
             </div>
-            <span className="badge badge-red">1 Date Over Budget</span>
           </div>
           <div style={{ padding: '16px 18px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#A0AEC0', letterSpacing: '0.06em', marginBottom: 10 }}>BUDGET BY DAY</div>
-            {[
-              { label:'Day 1 · Feb 19', spent:1297.5, limit:S.schBudget, over:true },
-              { label:'Day 2 · Feb 20', spent:850, limit:S.schBudget, over:false },
-              { label:'Day 3 · Feb 21', spent:720, limit:S.schBudget, over:false },
-            ].map((b) => {
-              const pct = Math.min(100, Math.round((b.spent / b.limit) * 100))
-              return (
-                <div key={b.label} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>{b.label}</span>
-                    <div>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: b.over ? '#DA1E28' : '#0D1117' }}>${b.spent.toLocaleString()}</span>
-                      <span style={{ fontSize: 11, color: '#A0AEC0' }}> / ${b.limit.toLocaleString()}</span>
-                    </div>
-                  </div>
-                  <div className="budget-bar"><div className="budget-fill" style={{ width: `${pct}%`, background: b.over ? '#DA1E28' : '#24A148' }} /></div>
-                </div>
-              )
-            })}
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#A0AEC0', letterSpacing: '0.06em', marginBottom: 10 }}>SCHEDULE OVERVIEW</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#718096' }}>Schedule</span><span style={{ fontWeight: 700 }}>{S.schName || '—'}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#718096' }}>Team</span><span style={{ fontWeight: 700 }}>{S.schTeam || '—'}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#718096' }}>Trip Dates</span><span style={{ fontWeight: 700 }}>{days.length} day{days.length !== 1 ? 's' : ''}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#718096' }}>Meals</span><span style={{ fontWeight: 700 }}>{validRows.length}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#718096' }}>Headcount</span><span style={{ fontWeight: 700 }}>{S.schHeadcount}</span></div>
+            </div>
             <hr style={{ border: 'none', borderTop: '1px solid #EEF1F5', margin: '14px 0' }} />
           </div>
           <div style={{ padding: '14px 18px', background: '#F8FAFC', borderTop: '1px solid #EEF1F5', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontSize: 11, color: '#718096' }}>Estimated Total</div>
-              <div style={{ fontSize: 24, fontWeight: 800 }}>${(S.schDays.length * S.schBudget).toLocaleString()}</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>${(days.length * S.schBudget).toLocaleString()}</div>
             </div>
-            <span className="badge badge-blue">{S.schDays.length || 0} Dates</span>
+            <span className="badge badge-blue">{days.length || 0} Dates</span>
           </div>
         </div>
 
@@ -373,7 +469,7 @@ function Step3Dietary({ S, schNext, togglePref, updVeg, onSubmitSchedule }) {
           <div style={{ background: '#FFF1F2', border: '1.5px solid #FECDD3', borderRadius: 12, padding: 14, display: 'flex', gap: 10 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#9B1C1C' }}>error</span>
             <div style={{ fontSize: 12, color: '#9B1C1C', lineHeight: 1.6 }}>
-              <strong>Can’t submit yet.</strong> Missing {missing.join(', ')}.
+              <strong>Can't submit yet.</strong> Missing {missing.join(', ')}.
             </div>
           </div>
         )}

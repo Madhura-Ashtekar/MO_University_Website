@@ -58,8 +58,6 @@ function normalizeWhitespace(text) {
 
 function looksLikeMealLine(line) {
   const lower = line.toLowerCase()
-  const hasTime = /\b\d{1,2}:\d{2}\b/.test(lower) || /\b\d{1,2}\/\d{1,2}\b/.test(lower)
-  if (!hasTime) return false
   return mealKeywords.some((k) => lower.includes(k))
 }
 
@@ -80,7 +78,7 @@ function inferLocationType(text) {
   const lower = text.toLowerCase()
   if (lower.includes('airport')) return 'airport'
   if (lower.includes('hotel')) return 'hotel'
-  if (lower.includes('field') || lower.includes('stadium')) return 'field'
+  if (lower.includes('field') || lower.includes('stadium') || lower.includes('arena')) return 'field'
   if (lower.includes('bus') || lower.includes('transit')) return 'bus'
   if (lower.includes('per-diem') || lower.includes('per diem')) return 'perdiem'
   return 'restaurant'
@@ -98,9 +96,20 @@ function extractTimezone(text, fallback) {
 }
 
 function extractTime(text) {
-  const match = text.match(/\b(\d{1,2}):(\d{2})\b/)
-  if (!match) return null
-  return `${pad2(match[1])}:${match[2]}`
+  const match12 = text.match(/\b(\d{1,2}):(\d{2})\s*(AM|PM)\b/i)
+  if (match12) {
+    let hours = Number(match12[1])
+    const minutes = match12[2]
+    const period = match12[3].toUpperCase()
+    if (period === 'PM' && hours !== 12) hours += 12
+    if (period === 'AM' && hours === 12) hours = 0
+    return `${pad2(hours)}:${minutes}`
+  }
+  const match24 = text.match(/\b(\d{1,2}):(\d{2})\b/)
+  if (match24) {
+    return `${pad2(match24[1])}:${match24[2]}`
+  }
+  return null
 }
 
 function extractMmDd(text) {
@@ -110,12 +119,28 @@ function extractMmDd(text) {
 }
 
 function parseDayHeader(line, year) {
-  // e.g. "THURSDAY, FEBRUARY 19"
   const m = line.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\b\s+(\d{1,2})/i)
-  if (!m) return null
-  const month = MONTHS[m[1].toLowerCase()]
-  const day = Number(m[2])
-  return toIsoDate({ year, month, day })
+  if (m) {
+    const month = MONTHS[m[1].toLowerCase()]
+    const day = Number(m[2])
+    return toIsoDate({ year, month, day })
+  }
+  const dayNumMatch = line.match(/(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2})\/(\d{1,2})/i)
+  if (dayNumMatch) {
+    return toIsoDate({ year, month: Number(dayNumMatch[1]), day: Number(dayNumMatch[2]) })
+  }
+  return null
+}
+
+function extractNotesFromBullet(line) {
+  const bracketMatch = line.match(/\[([^\]]+)\]/)
+  if (bracketMatch) return bracketMatch[1].trim()
+  const colonIdx = line.indexOf(':')
+  if (colonIdx > -1) {
+    const afterColon = line.slice(colonIdx + 1).trim()
+    if (afterColon.length > 0) return afterColon
+  }
+  return ''
 }
 
 export function parseAthleticsEmailToDraft({ text, year = 2026, defaultTimezone = 'America/New_York' }) {
@@ -144,13 +169,17 @@ export function parseAthleticsEmailToDraft({ text, year = 2026, defaultTimezone 
     const time = extractTime(line)
     const timezone = extractTimezone(line, defaultTimezone)
     const locationType = inferLocationType(`${line} ${atClause || ''}`)
-    const notes = atClause ? atClause : line
 
-    if (!time) continue
+    let notes = ''
+    if (atClause) {
+      notes = atClause
+    } else {
+      notes = extractNotesFromBullet(line)
+    }
 
     rows.push({
       date: currentDate || toIsoDate({ year, month: 1, day: 1 }),
-      time,
+      time: time || 'TBD',
       timezone,
       mealType,
       locationType,
@@ -158,7 +187,6 @@ export function parseAthleticsEmailToDraft({ text, year = 2026, defaultTimezone 
     })
   }
 
-  // Deduplicate identical rows (common in messy emails)
   const seen = new Set()
   const unique = []
   for (const r of rows) {
@@ -200,4 +228,3 @@ Thursday 3/19 (Start Wrestling)
 Sunday 3/22:
 - Breakfast: Breakfast sandwich place
 `
-

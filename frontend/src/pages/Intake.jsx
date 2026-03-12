@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { parseAthleticsEmailToDraft, EXAMPLE_EMAIL_BASEBALL, EXAMPLE_EMAIL_WRESTLING } from '../demo/intakeParser'
+import { classifyMealRow, classificationPill } from '../utils/classify'
 
 export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) {
   const [mode, setMode] = useState('paste')
@@ -34,11 +35,9 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
     const tbd = []
     const notMo = []
     for (const r of draftRows) {
-      const txt = `${r.mealType} ${r.locationType} ${r.notes}`.toLowerCase()
-      const isNot = txt.includes('per diem') || txt.includes('per-diem') || txt.includes('provided') || txt.includes('at field') || r.locationType === 'airport' || r.locationType === 'perdiem'
-      const isTbd = txt.includes('tbd') || txt.includes('?') || txt.includes('no preference') || txt.includes('italian') || txt.includes('greek') || txt.includes('local breakfast')
-      if (isNot) notMo.push(r)
-      else if (isTbd) tbd.push(r)
+      const { fulfillmentType } = classifyMealRow(r.mealType, r.locationType, r.notes)
+      if (fulfillmentType === 'not_mo') notMo.push(r)
+      else if (fulfillmentType === 'tbd') tbd.push(r)
       else mo.push(r)
     }
     return { mo, tbd, notMo }
@@ -243,10 +242,8 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
                 </thead>
                 <tbody>
                   {draftRows.map((r, idx) => {
-                    const txt = `${r.mealType} ${r.locationType} ${r.notes}`.toLowerCase()
-                    const isNot = txt.includes('per diem') || txt.includes('per-diem') || txt.includes('provided') || txt.includes('at field') || r.locationType === 'airport' || r.locationType === 'perdiem'
-                    const isTbd = txt.includes('tbd') || txt.includes('?') || txt.includes('no preference') || txt.includes('italian') || txt.includes('greek') || txt.includes('local breakfast')
-                    const pill = isNot ? { bg: '#F1F5F9', tx: '#475569', label: '⚪ Not MO' } : isTbd ? { bg: '#FEF3C7', tx: '#92400E', label: '🔶 TBD' } : { bg: '#DEFBE6', tx: '#14532D', label: '✅ MO' }
+                    const { fulfillmentType } = classifyMealRow(r.mealType, r.locationType, r.notes)
+                    const pill = classificationPill(fulfillmentType)
                     return (
                       <tr key={`${r.date}_${r.time}_${idx}`} style={{ borderBottom: '1px solid #F4F6F9' }}>
                         <td style={{ padding: '10px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>{r.date}</td>

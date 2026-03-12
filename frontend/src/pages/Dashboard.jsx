@@ -1,6 +1,6 @@
 import React from 'react'
 
-export function PageDashboard({ go, toggleChat, serverMeta }) {
+export function PageDashboard({ go, toggleChat, serverMeta, showToast }) {
   const stats = [
     { icon:'local_shipping', val:'24', label:'Deliveries this week', badge:'badge-green', badgeText:'+12%', iconBg:'#EBF2FF', iconColor:'#0F62FE' },
     { icon:'groups', val:'1,250', label:'Meals served', badge:'badge-gray', badgeText:'Active', iconBg:'#EDE9FE', iconColor:'#6D28D9' },
@@ -42,7 +42,7 @@ export function PageDashboard({ go, toggleChat, serverMeta }) {
           ].map((q) => (
             <button 
               key={q.label} 
-              onClick={() => q.page ? go(q.page) : window.alert('Coming soon!')} 
+              onClick={() => q.page ? go(q.page) : showToast?.('Export reports coming soon!', 'info')} 
               className="hover-lift"
               style={{ 
                 display:'flex', alignItems:'center', gap: 14, padding:'16px 20px', borderRadius: 16, 
@@ -98,7 +98,7 @@ export function PageDashboard({ go, toggleChat, serverMeta }) {
               <span className="material-symbols-outlined" style={{ color: '#0F62FE', fontSize: 22 }}>schedule</span>
               <span style={{ fontSize: 15, fontWeight: 800 }}>Today’s Schedule</span>
             </div>
-            <span style={{ fontSize: 12, color: '#718096', fontWeight: 600 }}>Tuesday, Oct 24</span>
+            <span style={{ fontSize: 12, color: '#718096', fontWeight: 600 }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</span>
           </div>
           <div style={{ maxHeight: 300, overflowY: 'auto' }}>
             {schedItems.map((s) => (

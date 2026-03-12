@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+from contextlib import asynccontextmanager
 from datetime import datetime
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
@@ -19,24 +22,27 @@ from .schemas import (
     WorkflowSummary,
 )
 
+@asynccontextmanager
+async def lifespan(app):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="Meal Outpost Athletics API",
     description="Backend for the athletics meal intake, Stripe billing prep, and Nash dispatch flows.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[o.strip() for o in _cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
 
 
 @app.get("/")
@@ -96,8 +102,18 @@ def create_team(payload: TeamCreate):
 def list_workflows():
     with Session(engine) as session:
         workflows = session.exec(select(Workflow).order_by(Workflow.created_at.desc())).all()
-        executions = session.exec(select(Execution)).all()
-        queue_open = session.exec(select(AdminQueueItem).where(AdminQueueItem.status == "open")).all()
+        wf_ids = [w.id for w in workflows]
+        if not wf_ids:
+            return []
+        executions = session.exec(
+            select(Execution).where(Execution.workflow_id.in_(wf_ids))
+        ).all()
+        queue_open = session.exec(
+            select(AdminQueueItem).where(
+                AdminQueueItem.status == "open",
+                AdminQueueItem.workflow_id.in_(wf_ids),
+            )
+        ).all()
 
     ex_by_wf: dict[str, list[Execution]] = {}
     for e in executions:
@@ -175,6 +191,7 @@ def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
         state=draft.state,
         game_date=draft.gameDate,
         game_time=draft.gameTime,
+        dietary_notes=draft.dietaryNotes,
         status="submitted",
     )
 

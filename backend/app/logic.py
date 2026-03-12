@@ -7,6 +7,8 @@ def classify(meal_type: str, location_type: str, notes: str) -> tuple[bool, str]
         return (False, "not_mo")
     if "provided" in text or "at field" in text:
         return (False, "not_mo")
+    if "pickup" in text or "pick-up" in text or "pick up" in text:
+        return (True, "mo_pickup")
     if "tbd" in text:
         return (False, "tbd")
     return (True, "mo_delivery")
@@ -23,4 +25,3 @@ def derive_event_context(meal_type: str, location_type: str, notes: str) -> str:
     if "practice" in text:
         return "practice"
     return "travel"
-

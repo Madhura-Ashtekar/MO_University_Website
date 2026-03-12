@@ -54,13 +54,22 @@ function AppContent() {
       division: 'DI',
       schHeadcount: 45,
       schBudget: 65,
-      schDays: [], // ['2026-02-19', ...]
-      mealRowsByDay: {}, // { '2026-02-19': [{type, time, loc, notes, budget}] }
+      tripType: 'overnight',
+      homeAwayNeutral: 'away',
+      opponent: '',
+      venueName: '',
+      city: '',
+      state: '',
+      gameDate: '',
+      gameTime: '',
+      schDays: [],
+      mealRowsByDay: {},
       
       // Dietary / Prefs
       vegPct: 15,
       glutenFree: true,
       nutFree: false,
+      dietaryNotes: '',
     }
   })
 
@@ -74,7 +83,8 @@ function AppContent() {
   }
 
   useEffect(() => {
-    localStorage.setItem('mo_state_v2', JSON.stringify(S))
+    const toSave = { ...S, chatMsgs: S.chatMsgs.slice(-50) }
+    localStorage.setItem('mo_state_v2', JSON.stringify(toSave))
   }, [S])
 
   const refreshMeta = useCallback(async () => {
@@ -181,7 +191,7 @@ function AppContent() {
         />
         
         <Routes>
-          <Route path="/" element={<PageDashboard go={go} toggleChat={toggleChat} serverMeta={serverMeta} />} />
+          <Route path="/" element={<PageDashboard go={go} toggleChat={toggleChat} serverMeta={serverMeta} showToast={showToast} />} />
           <Route path="/schedules" element={<PageSchedules S={S} go={go} onDaySelect={(d) => upd('calDay', d)} />} />
           <Route path="/intake" element={<PageIntake defaultTeam={S.schTeam} defaultHeadcount={S.schHeadcount} onSubmitSchedule={handleSubmitSchedule} />} />
           <Route path="/workflows" element={<PageWorkflows go={go} showToast={showToast} />} />
