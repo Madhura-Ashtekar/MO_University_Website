@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 
-export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, updRow, togglePref, updVeg, onSubmitSchedule }) {
+export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, updRow, togglePref, updVeg, updGfPct, updNfPct, onSubmitSchedule }) {
   const steps = [
     { id: 1, label: 'Trip Basics', icon: 'info' },
     { id: 2, label: 'Meal Plan', icon: 'restaurant_menu' },
@@ -149,7 +149,7 @@ export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, up
       )}
 
       {S.schStep === 2 && <Step2MealPlan S={S} upd={upd} schNext={schNext} toggleDay={toggleDay} addRow={addRow} delRow={delRow} updRow={updRow} />}
-      {S.schStep === 3 && <Step3Dietary S={S} upd={upd} schNext={schNext} togglePref={togglePref} updVeg={updVeg} onSubmitSchedule={onSubmitSchedule} />}
+      {S.schStep === 3 && <Step3Dietary S={S} upd={upd} schNext={schNext} togglePref={togglePref} updVeg={updVeg} updGfPct={updGfPct} updNfPct={updNfPct} onSubmitSchedule={onSubmitSchedule} />}
     </div>
   )
 }
@@ -322,7 +322,7 @@ function Step2MealPlan({ S, upd, schNext, toggleDay, addRow, delRow, updRow }) {
   )
 }
 
-function Step3Dietary({ S, upd, schNext, togglePref, updVeg, onSubmitSchedule }) {
+function Step3Dietary({ S, upd, schNext, togglePref, updVeg, updGfPct, updNfPct, onSubmitSchedule }) {
   const days = (S.schDays.length > 0 ? [...S.schDays].sort() : [])
   const rows = days.flatMap((d) => (S.mealRowsByDay[d] || []).map((r) => ({ ...r, date: d })))
   const validRows = rows.filter((r) => r.type && r.time)
@@ -358,17 +358,21 @@ function Step3Dietary({ S, upd, schNext, togglePref, updVeg, onSubmitSchedule })
               <input type="range" min="0" max="100" value={S.vegPct} onChange={(e) => updVeg(e.target.value)} style={{ width: '100%', accentColor: '#0F62FE' }} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
               {[
-                { label:'Gluten Free Option', sub:'Always include a GF choice', key:'glutenFree', val:S.glutenFree },
-                { label:'Nut-Free Kitchen', sub:'Strict allergy protocol required', key:'nutFree', val:S.nutFree },
-              ].map((t) => (
-                <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', border: '1.5px solid #E2E8F0', borderRadius: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{t.label}</div>
-                    <div style={{ fontSize: 11, color: '#718096' }}>{t.sub}</div>
+                { label: 'Gluten-Free %', icon: 'grain', iconColor: '#D97706', badgeBg: '#FEF3C7', badgeTx: '#92400E', pct: S.glutenFreePct ?? 0, updFn: updGfPct },
+                { label: 'Nut-Free %', icon: 'no_food', iconColor: '#9333EA', badgeBg: '#F3E8FF', badgeTx: '#6B21A8', pct: S.nutFreePct ?? 0, updFn: updNfPct },
+              ].map((d) => (
+                <div key={d.label} style={{ background: '#F8FAFC', padding: 12, borderRadius: 12, border: '1.5px solid #E2E8F0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 15, color: d.iconColor }}>{d.icon}</span> {d.label}
+                    </label>
+                    <span style={{ background: d.badgeBg, color: d.badgeTx, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                      {d.pct}% ({Math.round((d.pct * S.schHeadcount) / 100)} people)
+                    </span>
                   </div>
-                  <div className={`toggle-wrap ${t.val ? 'on' : ''}`} onClick={() => togglePref(t.key)} />
+                  <input type="range" min="0" max="100" value={d.pct} onChange={(e) => d.updFn(Number(e.target.value))} style={{ width: '100%', accentColor: '#0F62FE' }} />
                 </div>
               ))}
             </div>
@@ -421,8 +425,8 @@ function Step3Dietary({ S, upd, schNext, togglePref, updVeg, onSubmitSchedule })
                     headcount: Number(S.schHeadcount),
                     dietaryCounts: {
                       vegetarian: Math.round((Number(S.vegPct) * Number(S.schHeadcount)) / 100),
-                      glutenFree: S.glutenFree ? Math.round(0.25 * Number(S.schHeadcount)) : 0,
-                      nutFree: S.nutFree ? Math.round(0.05 * Number(S.schHeadcount)) : 0,
+                      glutenFree: Math.round(((S.glutenFreePct ?? 0) * Number(S.schHeadcount)) / 100),
+                      nutFree: Math.round(((S.nutFreePct ?? 0) * Number(S.schHeadcount)) / 100),
                     },
                   })),
                 }

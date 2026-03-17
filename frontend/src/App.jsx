@@ -23,8 +23,6 @@ import { PageBudget } from './pages/Budget'
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', link: '/' },
   { id: 'schedules', label: 'Schedules', icon: 'calendar_today', link: '/schedules' },
-  { id: 'intake', label: 'Intake', icon: 'auto_awesome', link: '/intake', nb: true },
-  { id: 'workflows', label: 'Workflows', icon: 'list_alt', link: '/workflows' },
   { id: 'teams', label: 'Teams', icon: 'groups', link: '/teams' },
   { id: 'budget', label: 'Budget', icon: 'payments', link: '/budget' },
 ]
@@ -98,8 +96,8 @@ function AppContent() {
       
       // Dietary / Prefs
       vegPct: 15,
-      glutenFree: true,
-      nutFree: false,
+      glutenFreePct: 0,
+      nutFreePct: 0,
       dietaryNotes: '',
     }
   })
@@ -110,7 +108,10 @@ function AppContent() {
 
   const showToast = (text, type = 'success') => {
     setToast({ text, type })
-    setTimeout(() => setToast(null), 3000)
+    // Errors stay until dismissed — success/info messages auto-dismiss after 3s
+    if (type !== 'error') {
+      setTimeout(() => setToast(null), 3000)
+    }
   }
 
   useEffect(() => {
@@ -191,6 +192,8 @@ function AppContent() {
   }
   const togglePref = (k) => upd(k, !S[k])
   const updVeg = (v) => upd('vegPct', v)
+  const updGfPct = (v) => upd('glutenFreePct', v)
+  const updNfPct = (v) => upd('nutFreePct', v)
 
   const resetFormState = () => {
     setS((prev) => ({
@@ -208,8 +211,8 @@ function AppContent() {
       gameDate: '',
       gameTime: '',
       vegPct: 15,
-      glutenFree: true,
-      nutFree: false,
+      glutenFreePct: 0,
+      nutFreePct: 0,
       dietaryNotes: '',
     }))
   }
@@ -233,7 +236,7 @@ function AppContent() {
 
   return (
     <div className="app-container" style={{ display: 'flex', background: '#F8FAFC', minHeight: '100vh' }}>
-      <Sidebar navItems={NAV_ITEMS} page={currentPageId} go={go} />
+      <Sidebar navItems={NAV_ITEMS} page={currentPageId} go={go} tbdCount={serverMeta.openTbd} />
       
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <TopBar 
@@ -247,15 +250,15 @@ function AppContent() {
         
         <Routes>
           <Route path="/" element={<PageDashboard go={go} toggleChat={toggleChat} serverMeta={serverMeta} showToast={showToast} />} />
-          <Route path="/schedules" element={<PageSchedules S={S} go={go} onDaySelect={(d) => upd('calDay', d)} />} />
+          <Route path="/schedules" element={<PageSchedules S={S} go={go} onDaySelect={(d) => upd('calDay', d)} onSubmitSchedule={handleSubmitSchedule} showToast={showToast} />} />
           <Route path="/intake" element={<PageIntake defaultTeam={S.schTeam} defaultHeadcount={S.schHeadcount} onSubmitSchedule={handleSubmitSchedule} />} />
           <Route path="/workflows" element={<PageWorkflows go={go} showToast={showToast} />} />
           <Route path="/new-schedule" element={
-            <PageNewSchedule 
-              S={S} upd={upd} schNext={schNext} toggleDay={toggleDay} 
-              addRow={addRow} delRow={delRow} updRow={updRow} 
-              togglePref={togglePref} updVeg={updVeg} 
-              onSubmitSchedule={handleSubmitSchedule} 
+            <PageNewSchedule
+              S={S} upd={upd} schNext={schNext} toggleDay={toggleDay}
+              addRow={addRow} delRow={delRow} updRow={updRow}
+              togglePref={togglePref} updVeg={updVeg} updGfPct={updGfPct} updNfPct={updNfPct}
+              onSubmitSchedule={handleSubmitSchedule}
             />
           } />
           <Route path="/teams" element={<PageTeams showToast={showToast} />} />
@@ -290,6 +293,11 @@ function AppContent() {
             {toast.type === 'error' ? 'error' : 'check_circle'}
           </span>
           {toast.text}
+          <button
+            onClick={() => setToast(null)}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', padding: '0 0 0 8px', fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+            aria-label="Dismiss"
+          >×</button>
         </div>
       )}
     </div>

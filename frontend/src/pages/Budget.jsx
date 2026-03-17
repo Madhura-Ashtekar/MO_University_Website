@@ -4,21 +4,45 @@ import { apiFetch } from '../api/client'
 export function PageBudget({ go, showToast }) {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [filterTeam, setFilterTeam] = useState('')
+  const [filterMonth, setFilterMonth] = useState('')
+  const [allTeams, setAllTeams] = useState([])
 
   useEffect(() => {
-    apiFetch('/analytics/budget')
+    apiFetch('/teams').then(setAllTeams).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (filterTeam) params.set('team_name', filterTeam)
+    if (filterMonth) params.set('month', filterMonth)
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    apiFetch(`/analytics/budget${qs}`)
       .then(setStats)
       .catch((e) => showToast(e.message, 'error'))
       .finally(() => setLoading(false))
-  }, [showToast])
+  }, [filterTeam, filterMonth, showToast])
 
-  if (loading) return <div className="page" style={{ padding: 40, textAlign: 'center' }}>Loading budget analytics...</div>
+  if (loading && !stats) return <div className="page" style={{ padding: 40, textAlign: 'center' }}>Loading budget analytics...</div>
 
   return (
     <div className="page" style={{ padding: '28px 32px', maxWidth: 1280, margin: '0 auto' }}>
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>Budget Analytics</h2>
-        <p style={{ color: '#718096', margin: 0 }}>Track spending across teams and travel periods.</p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, gap: 20, flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>Budget Analytics</h2>
+          <p style={{ color: '#718096', margin: 0 }}>Track spending across teams and travel periods.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select className="form-field" style={{ minWidth: 200 }} value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)}>
+            <option value="">All Teams</option>
+            {allTeams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+          </select>
+          <input className="form-field" type="month" style={{ minWidth: 150 }} value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} title="Filter by month" />
+          {(filterTeam || filterMonth) && (
+            <button className="btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => { setFilterTeam(''); setFilterMonth('') }}>Clear filters</button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 32 }}>

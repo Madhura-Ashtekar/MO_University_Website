@@ -1,9 +1,10 @@
 const STATUS_LABELS = {
-  submitted: 'Submitted',
-  approved: 'Approved',
-  billing_prepped: 'Billing Ready',
+  submitted: 'Awaiting Feasibility Review',
+  approved: 'Feasibility OK — Billing Pending',       // legacy fallback for existing records
+  feasibility_approved: 'Feasibility OK — Billing Pending',
+  billing_prepped: 'Billing Ready — Pending Dispatch',
   dispatch_approved: 'Dispatched',
-  context_only: 'Context Only',
+  context_only: 'Logged Only',
 }
 
 const FULFILLMENT_LABELS = {
@@ -60,6 +61,19 @@ export function fmtDateShort(isoDate) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   } catch {
     return isoDate
+  }
+}
+
+export function fmtDateCompact(isoDate) {
+  if (!isoDate) return { day: '—', weekday: '' }
+  try {
+    const d = new Date(isoDate + 'T12:00:00')
+    return {
+      day: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      weekday: d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+    }
+  } catch {
+    return { day: isoDate, weekday: '' }
   }
 }
 

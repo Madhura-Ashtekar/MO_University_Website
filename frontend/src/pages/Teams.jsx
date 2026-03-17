@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { apiFetch } from '../api/client'
 
-const EMPTY_FORM = { name: '', schoolName: '', sport: '', conference: '', division: 'DI', defaultHeadcount: 45, defaultBudget: 65 }
+const EMPTY_FORM = { name: '', schoolName: '', sport: '', conference: '', division: 'DI', defaultHeadcount: 45, defaultBudget: 65, defaultVegPct: 10, defaultGfPct: 0, defaultNfPct: 0 }
 
 export function PageTeams({ showToast }) {
   const [teams, setTeams] = useState([])
@@ -9,6 +9,9 @@ export function PageTeams({ showToast }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [editingPrefsId, setEditingPrefsId] = useState(null)
+  const [prefsForm, setPrefsForm] = useState({ defaultVegPct: 10, defaultGfPct: 0, defaultNfPct: 0 })
+  const [savingPrefs, setSavingPrefs] = useState(false)
 
   const loadTeams = () => {
     setLoading(true)
@@ -36,6 +39,9 @@ export function PageTeams({ showToast }) {
           division: form.division,
           defaultHeadcount: Number(form.defaultHeadcount),
           defaultBudget: Number(form.defaultBudget),
+          defaultVegPct: Number(form.defaultVegPct),
+          defaultGfPct: Number(form.defaultGfPct),
+          defaultNfPct: Number(form.defaultNfPct),
         },
       })
       showToast(`Team "${form.name}" created!`)
@@ -46,6 +52,28 @@ export function PageTeams({ showToast }) {
       showToast(e.message || 'Failed to create team.', 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openPrefsEdit = (t) => {
+    setEditingPrefsId(t.id)
+    setPrefsForm({ defaultVegPct: t.default_veg_pct ?? 10, defaultGfPct: t.default_gf_pct ?? 0, defaultNfPct: t.default_nf_pct ?? 0 })
+  }
+
+  const savePrefs = async (teamId) => {
+    setSavingPrefs(true)
+    try {
+      await apiFetch(`/teams/${teamId}`, {
+        method: 'PATCH',
+        body: { defaultVegPct: prefsForm.defaultVegPct, defaultGfPct: prefsForm.defaultGfPct, defaultNfPct: prefsForm.defaultNfPct },
+      })
+      showToast('Dietary preferences saved!')
+      setEditingPrefsId(null)
+      loadTeams()
+    } catch (e) {
+      showToast(e.message || 'Failed to save preferences.', 'error')
+    } finally {
+      setSavingPrefs(false)
     }
   }
 
@@ -82,7 +110,7 @@ export function PageTeams({ showToast }) {
               <input className="form-field" value={form.sport} onChange={(e) => upd('sport', e.target.value)} placeholder="Baseball, Wrestling..." />
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: '#718096', display: 'block', marginBottom: 5 }}>Conference</label>
               <input className="form-field" value={form.conference} onChange={(e) => upd('conference', e.target.value)} placeholder="ACC, Big 10..." />
@@ -105,6 +133,22 @@ export function PageTeams({ showToast }) {
               <label style={{ fontSize: 12, fontWeight: 700, color: '#718096', display: 'block', marginBottom: 5 }}>Default Budget / Meal ($)</label>
               <input className="form-field" type="number" step="0.01" value={form.defaultBudget} onChange={(e) => upd('defaultBudget', e.target.value)} />
             </div>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#A0AEC0', letterSpacing: '0.07em', marginBottom: 8 }}>DIETARY DEFAULTS (pre-filled in Intake)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+            {[
+              { label: 'Vegetarian %', key: 'defaultVegPct' },
+              { label: 'Gluten-Free %', key: 'defaultGfPct' },
+              { label: 'Nut-Free %', key: 'defaultNfPct' },
+            ].map((d) => (
+              <div key={d.key}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#718096', display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <span>{d.label}</span>
+                  <span style={{ fontWeight: 800, color: '#0F62FE' }}>{form[d.key]}%</span>
+                </label>
+                <input type="range" min="0" max="100" value={form[d.key]} onChange={(e) => upd(d.key, Number(e.target.value))} style={{ width: '100%', accentColor: '#0F62FE' }} />
+              </div>
+            ))}
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
             <button className="btn-secondary" onClick={() => { setForm(EMPTY_FORM); setShowForm(false) }}>Cancel</button>
@@ -159,11 +203,45 @@ export function PageTeams({ showToast }) {
                   <span style={{ color: '#718096' }}>Default Budget / Meal</span>
                   <span style={{ fontWeight: 700 }}>${t.default_budget?.toFixed(2)}</span>
                 </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                  {(t.default_veg_pct > 0) && <span style={{ background: '#D1FAE5', color: '#065F46', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>Veg {t.default_veg_pct}%</span>}
+                  {(t.default_gf_pct > 0) && <span style={{ background: '#FEF3C7', color: '#92400E', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>GF {t.default_gf_pct}%</span>}
+                  {(t.default_nf_pct > 0) && <span style={{ background: '#F3E8FF', color: '#6B21A8', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>NF {t.default_nf_pct}%</span>}
+                  {(!t.default_veg_pct && !t.default_gf_pct && !t.default_nf_pct) && <span style={{ color: '#A0AEC0', fontSize: 10 }}>No dietary defaults set</span>}
+                </div>
               </div>
+
+              {/* Edit Prefs expansion panel */}
+              {editingPrefsId === t.id ? (
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#A0AEC0', letterSpacing: '0.07em', marginBottom: 10 }}>DIETARY DEFAULTS</div>
+                  {[
+                    { label: 'Vegetarian %', key: 'defaultVegPct' },
+                    { label: 'Gluten-Free %', key: 'defaultGfPct' },
+                    { label: 'Nut-Free %', key: 'defaultNfPct' },
+                  ].map((d) => (
+                    <div key={d.key} style={{ marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                        <span>{d.label}</span>
+                        <span style={{ color: '#0F62FE' }}>{prefsForm[d.key]}%</span>
+                      </div>
+                      <input type="range" min="0" max="100" value={prefsForm[d.key]} onChange={(e) => setPrefsForm((p) => ({ ...p, [d.key]: Number(e.target.value) }))} style={{ width: '100%', accentColor: '#0F62FE' }} />
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => setEditingPrefsId(null)}>Cancel</button>
+                    <button className="btn-primary" style={{ flex: 1, fontSize: 12 }} disabled={savingPrefs} onClick={() => savePrefs(t.id)}>
+                      {savingPrefs ? 'Saving...' : 'Save Prefs'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               <div style={{ display: 'flex', gap: 10 }}>
                 <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => showToast('Roster management coming soon!')}>View Roster</button>
-                <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => showToast('Dietary preferences editor coming soon!')}>Edit Prefs</button>
+                <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }} onClick={() => editingPrefsId === t.id ? setEditingPrefsId(null) : openPrefsEdit(t)}>
+                  {editingPrefsId === t.id ? 'Close' : 'Edit Prefs'}
+                </button>
               </div>
             </div>
           ))}

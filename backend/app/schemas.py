@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TeamCreate(BaseModel):
@@ -12,6 +12,9 @@ class TeamCreate(BaseModel):
     division: str = "DI"
     defaultHeadcount: int = 45
     defaultBudget: float = 65.0
+    defaultVegPct: int = Field(default=10, ge=0, le=100)
+    defaultGfPct: int = Field(default=0, ge=0, le=100)
+    defaultNfPct: int = Field(default=0, ge=0, le=100)
     stripeCustomerId: Optional[str] = None
 
 
@@ -23,6 +26,9 @@ class TeamPatch(BaseModel):
     division: Optional[str] = None
     defaultHeadcount: Optional[int] = Field(default=None, alias="defaultHeadcount")
     defaultBudget: Optional[float] = Field(default=None, alias="defaultBudget")
+    defaultVegPct: Optional[int] = Field(default=None, alias="defaultVegPct", ge=0, le=100)
+    defaultGfPct: Optional[int] = Field(default=None, alias="defaultGfPct", ge=0, le=100)
+    defaultNfPct: Optional[int] = Field(default=None, alias="defaultNfPct", ge=0, le=100)
     stripeCustomerId: Optional[str] = Field(default=None, alias="stripeCustomerId")
 
     class Config:
@@ -38,6 +44,9 @@ class TeamSummary(BaseModel):
     division: str
     default_headcount: int
     default_budget: float
+    default_veg_pct: int = 10
+    default_gf_pct: int = 0
+    default_nf_pct: int = 0
 
 
 class IntakeRowIn(BaseModel):
@@ -47,10 +56,21 @@ class IntakeRowIn(BaseModel):
     mealType: str
     locationType: str
     notes: str = ""
-    budget: Optional[float] = None
-    headcount: int
+    budget: Optional[float] = Field(default=None, ge=0)
+    headcount: int = Field(ge=1)
     dietaryCounts: Optional[dict] = None
     serviceStyle: Optional[str] = "boxed"
+
+    @model_validator(mode='after')
+    def check_dietary_counts(self):
+        if self.dietaryCounts:
+            total_dietary = sum(v for v in self.dietaryCounts.values() if isinstance(v, (int, float)))
+            if total_dietary > self.headcount:
+                raise ValueError(
+                    f"Sum of dietary counts ({int(total_dietary)}) exceeds headcount ({self.headcount}). "
+                    "Check vegetarian, gluten-free, and nut-free totals."
+                )
+        return self
 
 
 class WorkflowCreateFromDraft(BaseModel):
@@ -113,8 +133,11 @@ class ExecutionPatch(BaseModel):
     event_context: Optional[str] = Field(default=None, alias="eventContext")
 
     # Financials — unit_price is what MO charges the client; cost_per_meal is MO's cost to vendor
-    unit_price: Optional[float] = Field(default=None, alias="unitPrice")
-    cost_per_meal: Optional[float] = Field(default=None, alias="costPerMeal")
+    unit_price: Optional[float] = Field(default=None, alias="unitPrice", ge=0)
+    cost_per_meal: Optional[float] = Field(default=None, alias="costPerMeal", ge=0)
+
+    # Dietary counts — editable per-execution (each value must not exceed headcount)
+    dietary_counts: Optional[dict] = Field(default=None, alias="dietaryCounts")
 
     # Nash delivery fields — required before dispatch can be triggered
     pickup_address: Optional[str] = Field(default=None, alias="pickupAddress")

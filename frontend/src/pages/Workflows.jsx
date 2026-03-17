@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../api/client'
-import { statusLabel, fulfillmentLabel, queueTypeLabel, tzShort, fmtDate, fmtTime12 } from '../utils/format'
+import { statusLabel, fulfillmentLabel, queueTypeLabel, tzShort, fmtDate, fmtDateCompact, fmtTime12 } from '../utils/format'
 
-export function PageWorkflows({ go, showToast }) {
+export function PageWorkflows({ go, showToast, initialFocusId, isAdmin = true, hideNewButton = false }) {
   const [searchParams] = useSearchParams()
   const [rightTab, setRightTab] = useState('workflow')
   const [search, setSearch] = useState('')
@@ -16,6 +16,7 @@ export function PageWorkflows({ go, showToast }) {
   const [editDraft, setEditDraft] = useState(null)
   // billingReview: { workflowId, rows: [{id, title, headcount, unitPrice, costPerMeal}] }
   const [billingReview, setBillingReview] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('all')
 
   // Tracks which workflow ID had its detail pre-fetched by the mount effect.
   // The selection useEffect skips re-fetching that ID to prevent a double call on load.
@@ -41,9 +42,10 @@ export function PageWorkflows({ go, showToast }) {
   // selection effect below doesn't fire a second detail request for the same ID.
   useEffect(() => {
     const newId = searchParams.get('new')
+    const focusId = searchParams.get('focus') || initialFocusId
     refreshList()
       .then(async (list) => {
-        const targetId = newId || list[0]?.id || null
+        const targetId = newId || focusId || list[0]?.id || null
         if (targetId) {
           await refreshDetail(targetId)
           prefetchedIdRef.current = targetId  // mark before triggering selection effect
@@ -67,9 +69,13 @@ export function PageWorkflows({ go, showToast }) {
 
   const filteredWorkflows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return workflows
-    return workflows.filter((w) => `${w.name} ${w.team_name} ${w.sport || ''}`.toLowerCase().includes(q))
-  }, [workflows, search])
+    let list = workflows
+    if (q) list = list.filter(w => `${w.name} ${w.team_name} ${w.sport || ''}`.toLowerCase().includes(q))
+    if (statusFilter === 'pending') list = list.filter(w => w.status === 'submitted')
+    if (statusFilter === 'active') list = list.filter(w => ['feasibility_approved', 'billing_prepped'].includes(w.status))
+    if (statusFilter === 'done') list = list.filter(w => w.status === 'dispatch_approved')
+    return list
+  }, [workflows, search, statusFilter])
 
   const selectedWorkflow = useMemo(() => {
     if (!detail) return null
@@ -237,12 +243,19 @@ export function PageWorkflows({ go, showToast }) {
               <span style={{ fontSize: 16, fontWeight: 800 }}>Workflows</span>
               <span className="badge badge-gray" style={{ fontSize: 11 }}>{workflows.length}</span>
             </div>
-            <button className="btn-primary" onClick={() => go('new-schedule')}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'white' }}>add</span> New
-            </button>
+            {!hideNewButton && (
+              <button className="btn-primary" onClick={() => go('new-schedule')}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'white' }}>add</span> New
+              </button>
+            )}
           </div>
           <div style={{ padding: 16, borderBottom: '1px solid #EEF1F5' }}>
             <input className="form-field" placeholder="Search workflows..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div style={{ padding: '8px 16px', borderBottom: '1px solid #EEF1F5', display: 'flex', gap: 4 }}>
+            {[['all','All'],['pending','Submitted'],['active','In Review'],['done','Dispatched']].map(([v,l]) => (
+              <button key={v} className={statusFilter === v ? 'btn-primary' : 'btn-secondary'} style={{ padding: '4px 10px', fontSize: 11 }} onClick={() => setStatusFilter(v)}>{l}</button>
+            ))}
           </div>
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
             {filteredWorkflows.map((w) => {
@@ -294,18 +307,27 @@ export function PageWorkflows({ go, showToast }) {
               <button className={rightTab === 'workflow' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => setRightTab('workflow')}>
                 Workflow
               </button>
-              <button className={rightTab === 'queue' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => setRightTab('queue')}>
-                Admin Queue <span className="badge badge-orange" style={{ marginLeft: 6 }}>{openQueue.length}</span>
-              </button>
+              {isAdmin && (
+                <button className={rightTab === 'queue' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => setRightTab('queue')}>
+                  Admin Queue <span className="badge badge-orange" style={{ marginLeft: 6 }}>{openQueue.length}</span>
+                </button>
+              )}
             </div>
 
-            {rightTab === 'queue' && (
+            {isAdmin && rightTab === 'queue' && (
               <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 600, overflowY: 'auto' }}>
                 {openQueue.slice(0, 15).map((q) => {
                   const execForItem = executions.find(e => e.id === q.execution_id)
+                  const queueWf = workflows.find(w => w.id === q.workflow_id)
+                  const QUEUE_BORDER = { feasibility: '#3B82F6', resolve_tbd: '#D97706', billing_prep: '#16A34A', dispatch_approval: '#9333EA' }
+                  const qBorderColor = QUEUE_BORDER[q.type] || '#E2E8F0'
                   return (
-                    <div key={q.id} style={{ border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 4 }}>{queueTypeLabel(q.type)}</div>
+                    <div key={q.id} style={{ border: '1.5px solid #E2E8F0', borderLeft: `4px solid ${qBorderColor}`, borderRadius: 12, padding: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <div style={{ fontSize: 12, fontWeight: 900 }}>{queueTypeLabel(q.type)}</div>
+                        {q.created_at && <span style={{ fontSize: 10, color: '#A0AEC0' }}>{fmtDate(q.created_at.split('T')[0])}</span>}
+                      </div>
+                      {queueWf && <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 3 }}>{queueWf.team_name}{queueWf.sport ? ` · ${queueWf.sport}` : ''}</div>}
                       <div style={{ fontSize: 12, color: '#718096' }}>
                         {execForItem ? fmtExecTitle(execForItem) : 'Workflow-level action'}
                       </div>
@@ -323,6 +345,11 @@ export function PageWorkflows({ go, showToast }) {
                             return
                           }
                           if (q.type === 'billing_prep') {
+                            const targetWf = workflows.find(w => w.id === q.workflow_id)
+                            if ((targetWf?.counts?.tbd ?? 0) > 0) {
+                              showToast(`${targetWf.counts.tbd} TBD meal(s) must be resolved before billing prep.`, 'error')
+                              return
+                            }
                             // Show billing review before advancing — load detail first if needed
                             const target = selectedWorkflow?.id === q.workflow_id ? grouped.mo : []
                             if (target.length > 0) {
@@ -359,6 +386,23 @@ export function PageWorkflows({ go, showToast }) {
                           <span className="badge badge-amber">{grouped.tbd.length} TBD</span>
                           <span className="badge badge-gray">{grouped.notMo.length} Not MO</span>
                         </div>
+                        {!isAdmin && (
+                          <div style={{ marginTop: 10, background: selectedWorkflow.status === 'submitted' ? '#EBF2FF' : selectedWorkflow.status === 'dispatch_approved' ? '#F0FDF4' : '#FFFBEB', border: `1.5px solid ${selectedWorkflow.status === 'submitted' ? '#BFDBFE' : selectedWorkflow.status === 'dispatch_approved' ? '#86EFAC' : '#FDE68A'}`, borderRadius: 10, padding: '10px 12px' }}>
+                            <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 3, color: selectedWorkflow.status === 'submitted' ? '#1E40AF' : selectedWorkflow.status === 'dispatch_approved' ? '#14532D' : '#92400E', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{selectedWorkflow.status === 'dispatch_approved' ? 'check_circle' : selectedWorkflow.status === 'submitted' ? 'schedule' : 'pending'}</span>
+                              {selectedWorkflow.status === 'submitted' && 'Awaiting admin review'}
+                              {selectedWorkflow.status === 'feasibility_approved' && 'Feasibility confirmed — billing in progress'}
+                              {selectedWorkflow.status === 'billing_prepped' && 'Billing ready — awaiting dispatch approval'}
+                              {selectedWorkflow.status === 'dispatch_approved' && 'Dispatched — meals are confirmed!'}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#374151', lineHeight: 1.5 }}>
+                              {selectedWorkflow.status === 'submitted' && `Our team will confirm feasibility shortly.${grouped.tbd.length > 0 ? ` Resolve ${grouped.tbd.length} TBD meal(s) below to speed up dispatch.` : ''}`}
+                              {selectedWorkflow.status === 'feasibility_approved' && 'Our team is setting unit prices and costs. No action needed from you.'}
+                              {selectedWorkflow.status === 'billing_prepped' && 'Final step: our team will approve dispatch and send to Nash.'}
+                              {selectedWorkflow.status === 'dispatch_approved' && 'All MO meals have been dispatched to vendors. Check execution details below.'}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <span className="badge badge-blue" style={{ whiteSpace: 'nowrap' }}>{statusLabel(selectedWorkflow.status)}</span>
                     </div>
@@ -530,6 +574,28 @@ export function PageWorkflows({ go, showToast }) {
                           </div>
                         </div>
 
+                        {/* Dietary Counts */}
+                        <div style={{ marginTop: 14, border: '1.5px solid #E2E8F0', borderRadius: 10, padding: 12 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#16A34A', letterSpacing: '0.05em', marginBottom: 10 }}>DIETARY COUNTS</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                            {[
+                              { key: 'vegetarian', label: 'Vegetarian', color: '#065F46', bg: '#D1FAE5' },
+                              { key: 'glutenFree', label: 'Gluten-Free', color: '#92400E', bg: '#FEF3C7' },
+                              { key: 'nutFree', label: 'Nut-Free', color: '#6B21A8', bg: '#F3E8FF' },
+                            ].map((d) => (
+                              <div key={d.key}>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: '#718096', marginBottom: 3 }}>{d.label}</div>
+                                <input className="form-field" type="number" min="0"
+                                  value={editDraft.fields.dietaryCounts?.[d.key] ?? 0}
+                                  onChange={(e) => setEditDraft((p) => ({
+                                    ...p,
+                                    fields: { ...p.fields, dietaryCounts: { ...(p.fields.dietaryCounts || {}), [d.key]: Number(e.target.value) } }
+                                  }))} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
                         {/* Nash Delivery Details */}
                         <NashFields fields={editDraft.fields} onChange={(k, v) => setEditDraft((p) => ({ ...p, fields: { ...p.fields, [k]: v } }))} />
 
@@ -544,6 +610,7 @@ export function PageWorkflows({ go, showToast }) {
                               eventContext: editDraft.fields.eventContext,
                               unitPrice: editDraft.fields.unitPrice,
                               costPerMeal: editDraft.fields.costPerMeal,
+                              dietaryCounts: editDraft.fields.dietaryCounts,
                               pickupAddress: editDraft.fields.pickupAddress,
                               deliveryAddress: editDraft.fields.deliveryAddress,
                               pickupContactName: editDraft.fields.pickupContactName,
@@ -631,13 +698,22 @@ function ExecutionSection({ title, badgeClass, rows, onResolve, onEdit }) {
             return (
               <div key={e.id} style={{ border: '1.5px solid #E2E8F0', borderRadius: 12, padding: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: dietary.length > 0 ? 6 : 0 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {fmtDate(e.date)} · {e.time ? fmtTime12(e.time) : 'Time TBD'} · {e.mealType}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#718096', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                      {e.notes && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{e.notes}</span>}
-                      {e.headcount > 0 && <span style={{ color: '#A0AEC0' }}>· {e.headcount} pax</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    {/* Compact date chip */}
+                    {(() => { const { day, weekday } = fmtDateCompact(e.date); return (
+                      <div style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 8, width: 44, minWidth: 44, textAlign: 'center', padding: '4px 0', flexShrink: 0 }}>
+                        <div style={{ fontSize: 8, fontWeight: 800, color: '#718096', letterSpacing: '0.05em' }}>{weekday}</div>
+                        <div style={{ fontSize: 13, fontWeight: 900, color: '#0D1117', lineHeight: 1.1 }}>{day}</div>
+                      </div>
+                    )})()}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {e.time ? fmtTime12(e.time) : 'Time TBD'} · {e.mealType}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#718096', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        {e.notes && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{e.notes}</span>}
+                        {e.headcount > 0 && <span style={{ color: '#A0AEC0' }}>· {e.headcount} pax</span>}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>

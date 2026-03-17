@@ -144,13 +144,16 @@ export function PageDashboard({ go, toggleChat, serverMeta, showToast }) {
                       <span style={{ fontSize:13, fontWeight:700 }}>{s.meal_type} – {s.team_name}</span>
                       <span className={`badge badge-${statusType}`} style={{ fontSize:9, padding:'2px 6px' }}>{s.fulfillment_type === 'mo_delivery' ? 'Delivery' : s.fulfillment_type === 'mo_pickup' ? 'Pickup' : s.fulfillment_type === 'tbd' ? 'TBD' : 'Logged'}</span>
                     </div>
-                    <div style={{ fontSize:11, color:'#718096', display:'flex', gap:10 }}>
+                    <div style={{ fontSize:11, color:'#718096', display:'flex', gap:10, flexWrap:'wrap' }}>
                       <span style={{ display:'flex', alignItems:'center', gap:3 }}>
                         <span className="material-symbols-outlined" style={{ fontSize:13 }}>location_on</span> {s.location_type}
                       </span>
                       <span style={{ display:'flex', alignItems:'center', gap:3 }}>
                         <span className="material-symbols-outlined" style={{ fontSize:13 }}>group</span> {s.headcount} Pax
                       </span>
+                      {s.dietary_counts?.vegetarian > 0 && <span style={{ background:'#D1FAE5', color:'#065F46', fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:999 }}>{s.dietary_counts.vegetarian} Veg</span>}
+                      {s.dietary_counts?.glutenFree > 0 && <span style={{ background:'#FEF3C7', color:'#92400E', fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:999 }}>{s.dietary_counts.glutenFree} GF</span>}
+                      {s.dietary_counts?.nutFree > 0 && <span style={{ background:'#F3E8FF', color:'#6B21A8', fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:999 }}>{s.dietary_counts.nutFree} NF</span>}
                     </div>
                   </div>
                 </div>

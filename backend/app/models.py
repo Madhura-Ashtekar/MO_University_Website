@@ -22,6 +22,11 @@ class Team(SQLModel, table=True):
     default_headcount: int = Field(default=45)
     default_budget: float = Field(default=65.0)
 
+    # Dietary defaults — pre-fill intake forms for this team
+    default_veg_pct: int = Field(default=10)
+    default_gf_pct: int = Field(default=0)
+    default_nf_pct: int = Field(default=0)
+
     stripe_customer_id: Optional[str] = None
 
     created_at: datetime = Field(default_factory=utcnow)

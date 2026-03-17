@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { parseAthleticsEmailToDraft, EXAMPLE_EMAIL_BASEBALL, EXAMPLE_EMAIL_WRESTLING } from '../demo/intakeParser'
 import { classifyMealRow, classificationPill } from '../utils/classify'
 import { fmtTime12, fmtDateShort } from '../utils/format'
+import { apiFetch } from '../api/client'
 
 export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) {
   const [mode, setMode] = useState('paste')
@@ -22,11 +23,27 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
   const [headcount, setHeadcount] = useState(defaultHeadcount || 45)
   const [budgetPerMeal, setBudgetPerMeal] = useState('')
   const [vegPct, setVegPct] = useState(10)
-  const [glutenFree, setGlutenFree] = useState(false)
-  const [nutFree, setNutFree] = useState(false)
+  const [glutenFreePct, setGlutenFreePct] = useState(0)
+  const [nutFreePct, setNutFreePct] = useState(0)
   const [rawText, setRawText] = useState('')
   const [draftRows, setDraftRows] = useState([])
   const [parseError, setParseError] = useState('')
+  const [allTeams, setAllTeams] = useState([])
+
+  // Load teams once so we can pre-fill dietary defaults when team name is selected
+  useEffect(() => {
+    apiFetch('/teams').then(setAllTeams).catch(() => {})
+  }, [])
+
+  // Pre-fill dietary defaults whenever teamName matches a known team
+  useEffect(() => {
+    const match = allTeams.find((t) => t.name === teamName)
+    if (match) {
+      setVegPct(match.default_veg_pct ?? 10)
+      setGlutenFreePct(match.default_gf_pct ?? 0)
+      setNutFreePct(match.default_nf_pct ?? 0)
+    }
+  }, [teamName, allTeams])
 
   const missing = useMemo(() => {
     const m = []
@@ -65,8 +82,8 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
 
   const dietaryCounts = {
     vegetarian: Math.round((vegPct * Number(headcount)) / 100),
-    glutenFree: glutenFree ? Math.round(0.25 * Number(headcount)) : 0,
-    nutFree: nutFree ? Math.round(0.05 * Number(headcount)) : 0,
+    glutenFree: Math.round((glutenFreePct * Number(headcount)) / 100),
+    nutFree: Math.round((nutFreePct * Number(headcount)) / 100),
   }
 
   const submit = async () => {
@@ -228,26 +245,23 @@ export function PageIntake({ defaultTeam, defaultHeadcount, onSubmitSchedule }) 
           {/* Dietary Prefs */}
           <div style={{ fontSize: 11, fontWeight: 800, color: '#A0AEC0', letterSpacing: '0.07em', marginBottom: 8 }}>DIETARY PREFERENCES</div>
           <div style={{ background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0', padding: 14, marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#16A34A' }}>eco</span> Vegetarian %
-              </label>
-              <span style={{ background: '#D1FAE5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
-                {vegPct}% ({dietaryCounts.vegetarian} people)
-              </span>
-            </div>
-            <input type="range" min="0" max="100" value={vegPct} onChange={(e) => setVegPct(Number(e.target.value))} style={{ width: '100%', accentColor: '#0F62FE' }} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-              {[
-                { label: 'Gluten Free', val: glutenFree, set: setGlutenFree },
-                { label: 'Nut-Free Kitchen', val: nutFree, set: setNutFree },
-              ].map((t) => (
-                <div key={t.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: '1.5px solid #E2E8F0', borderRadius: 10, background: 'white', cursor: 'pointer' }} onClick={() => t.set(!t.val)}>
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{t.label}</span>
-                  <div className={`toggle-wrap ${t.val ? 'on' : ''}`} />
+            {[
+              { label: 'Vegetarian', icon: 'eco', iconColor: '#16A34A', pct: vegPct, setPct: setVegPct, count: dietaryCounts.vegetarian, badgeBg: '#D1FAE5', badgeTx: '#065F46' },
+              { label: 'Gluten-Free', icon: 'grain', iconColor: '#D97706', pct: glutenFreePct, setPct: setGlutenFreePct, count: dietaryCounts.glutenFree, badgeBg: '#FEF3C7', badgeTx: '#92400E' },
+              { label: 'Nut-Free Kitchen', icon: 'no_food', iconColor: '#9333EA', pct: nutFreePct, setPct: setNutFreePct, count: dietaryCounts.nutFree, badgeBg: '#F3E8FF', badgeTx: '#6B21A8' },
+            ].map((d) => (
+              <div key={d.label} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14, color: d.iconColor }}>{d.icon}</span> {d.label} %
+                  </label>
+                  <span style={{ background: d.badgeBg, color: d.badgeTx, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                    {d.pct}% ({d.count} people)
+                  </span>
                 </div>
-              ))}
-            </div>
+                <input type="range" min="0" max="100" value={d.pct} onChange={(e) => d.setPct(Number(e.target.value))} style={{ width: '100%', accentColor: '#0F62FE' }} />
+              </div>
+            ))}
           </div>
 
           {/* Email paste area */}

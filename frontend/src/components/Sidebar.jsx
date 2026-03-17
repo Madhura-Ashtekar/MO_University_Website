@@ -1,6 +1,6 @@
 import React from 'react'
 
-export function Sidebar({ navItems, page, go }) {
+export function Sidebar({ navItems, page, go, tbdCount = 0 }) {
   return (
     <aside style={{ width: 220, minWidth: 220, height: '100vh', position: 'sticky', top: 0, background: 'white', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', padding: '0 12px 24px', zIndex: 40, overflow: 'hidden' }}>
       <div style={{ padding: '18px 6px 20px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #EEF1F5', marginBottom: 12 }}>
@@ -22,6 +22,7 @@ export function Sidebar({ navItems, page, go }) {
               <span className="material-symbols-outlined icon" style={{ fontSize: 20 }}>{item.icon}</span>
               <span>{item.label}</span>
               {item.nb && <span style={{ marginLeft: 'auto', fontSize: 9, background: '#0F62FE', color: 'white', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>NEW</span>}
+              {item.id === 'schedules' && tbdCount > 0 && <span style={{ marginLeft: 'auto', fontSize: 9, background: '#D97706', color: 'white', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>{tbdCount} TBD</span>}
             </button>
           )
         })}
@@ -33,7 +34,7 @@ export function Sidebar({ navItems, page, go }) {
         </div>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>Jane Crawford</div>
-          <div style={{ fontSize: 10, color: '#718096' }}>Nutritionist</div>
+          <div style={{ fontSize: 10, color: '#718096' }}>University of Virginia</div>
         </div>
         <button onClick={() => go('dashboard')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="Settings">
           <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#A0AEC0' }}>settings</span>

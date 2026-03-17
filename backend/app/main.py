@@ -76,7 +76,10 @@ def list_teams():
                         "conference": w.conference,
                         "division": w.division or "DI",
                         "default_headcount": 45,
-                        "default_budget": 65.0
+                        "default_budget": 65.0,
+                        "default_veg_pct": 10,
+                        "default_gf_pct": 0,
+                        "default_nf_pct": 0,
                     }
             return list(unique_teams.values())
         return teams
@@ -93,6 +96,9 @@ def create_team(payload: TeamCreate):
             division=payload.division,
             default_headcount=payload.defaultHeadcount,
             default_budget=payload.defaultBudget,
+            default_veg_pct=payload.defaultVegPct,
+            default_gf_pct=payload.defaultGfPct,
+            default_nf_pct=payload.defaultNfPct,
             stripe_customer_id=payload.stripeCustomerId,
         )
         session.add(team)
@@ -122,6 +128,12 @@ def patch_team(team_id: str, patch: TeamPatch):
             team.default_headcount = data["default_headcount"]
         if "default_budget" in data and data["default_budget"] is not None:
             team.default_budget = data["default_budget"]
+        if "default_veg_pct" in data and data["default_veg_pct"] is not None:
+            team.default_veg_pct = data["default_veg_pct"]
+        if "default_gf_pct" in data and data["default_gf_pct"] is not None:
+            team.default_gf_pct = data["default_gf_pct"]
+        if "default_nf_pct" in data and data["default_nf_pct"] is not None:
+            team.default_nf_pct = data["default_nf_pct"]
         if "stripe_customer_id" in data:
             team.stripe_customer_id = data["stripe_customer_id"]
         team.updated_at = datetime.utcnow()
@@ -147,9 +159,9 @@ def patch_workflow(workflow_id: str, patch: WorkflowPatch):
 
 
 @app.get("/workflows", response_model=list[WorkflowSummary])
-def list_workflows():
+def list_workflows(skip: int = 0, limit: int = 50):
     with Session(engine) as session:
-        workflows = session.exec(select(Workflow).order_by(Workflow.created_at.desc())).all()
+        workflows = session.exec(select(Workflow).order_by(Workflow.created_at.desc()).offset(skip).limit(limit)).all()
         wf_ids = [w.id for w in workflows]
         if not wf_ids:
             return []
@@ -269,6 +281,7 @@ def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
         event_context = derive_event_context(row.mealType, row.locationType, row.notes)
         status = "context_only" if fulfillment_type == "not_mo" else "submitted"
         unit_price = float(row.budget) if row.budget is not None else 0.0
+        total_price = unit_price * row.headcount if row.headcount > 0 else 0.0
         exe = Execution(
             workflow_id=workflow_id,
             date=row.date,
@@ -284,7 +297,7 @@ def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
             headcount=row.headcount,
             dietary_counts=row.dietaryCounts or {},
             unit_price=unit_price,
-            total_price=unit_price * row.headcount,
+            total_price=total_price,
             status=status,
         )
         executions.append(exe)
@@ -341,12 +354,23 @@ def patch_execution(execution_id: str, patch: ExecutionPatch):
         # Financials: unit_price → total_price; cost_per_meal → cost; recompute margin
         if "unit_price" in data and data["unit_price"] is not None:
             exe.unit_price = float(data["unit_price"])
-            exe.total_price = exe.unit_price * exe.headcount
+            exe.total_price = exe.unit_price * exe.headcount if exe.headcount > 0 else 0.0
         if "cost_per_meal" in data and data["cost_per_meal"] is not None:
-            exe.cost = float(data["cost_per_meal"]) * exe.headcount
+            exe.cost = float(data["cost_per_meal"]) * exe.headcount if exe.headcount > 0 else 0.0
         # Always recompute margin when either financial changes
         if "unit_price" in data or "cost_per_meal" in data:
             exe.margin = exe.total_price - exe.cost
+
+        # Dietary counts — validate each value does not exceed headcount
+        if "dietary_counts" in data and data["dietary_counts"] is not None:
+            dc = data["dietary_counts"]
+            for key, val in dc.items():
+                if isinstance(val, (int, float)) and val > exe.headcount:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Dietary count for '{key}' ({int(val)}) exceeds headcount ({exe.headcount})."
+                    )
+            exe.dietary_counts = dc
 
         # Nash delivery fields — written whenever provided
         for src, dest in [
@@ -427,8 +451,22 @@ def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
         if action == "feasibility_approve":
             close_type = "feasibility"
             open_next = "billing_prep"
-            w.status = "approved"
+            w.status = "feasibility_approved"
         elif action == "billing_prep":
+            tbd_execs = session.exec(
+                select(Execution).where(
+                    Execution.workflow_id == workflow_id,
+                    Execution.fulfillment_type == "tbd",
+                )
+            ).all()
+            if tbd_execs:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": f"{len(tbd_execs)} TBD meal(s) must be resolved before billing prep.",
+                        "tbd_count": len(tbd_execs),
+                    },
+                )
             close_type = "billing_prep"
             open_next = "dispatch_approval"
             w.status = "billing_prepped"
@@ -445,6 +483,26 @@ def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
                     Execution.mo_fulfills == True,  # noqa: E712
                 )
             ).all()
+
+            # Validate Nash required fields on all mo_delivery executions before dispatch.
+            missing_fields = []
+            for exe in mo_executions:
+                if exe.fulfillment_type == "mo_delivery":
+                    missing = []
+                    if not exe.pickup_address:
+                        missing.append("pickup_address")
+                    if not exe.delivery_address:
+                        missing.append("delivery_address")
+                    if missing:
+                        missing_fields.append({"execution_id": exe.id, "date": exe.date, "meal_type": exe.meal_type, "missing": missing})
+            if missing_fields:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "Some MO Delivery executions are missing required Nash fields. Fill in pickup and delivery addresses before dispatching.",
+                        "incomplete_executions": missing_fields,
+                    }
+                )
             nash_deliveries = []
             for exe in mo_executions:
                 exe.status = "dispatched"
@@ -529,6 +587,7 @@ def get_calendar(month: str):
             "notes": e.notes,
             "headcount": e.headcount,
             "fulfillment_type": e.fulfillment_type,
+            "dietary_counts": e.dietary_counts or {},
             "team_name": wf.team_name if wf else "Unknown",
             "sport": wf.sport if wf else None,
             "workflow_name": wf.name if wf else "Unknown",
@@ -539,22 +598,33 @@ def get_calendar(month: str):
 
 
 @app.get("/analytics/budget")
-def get_budget_analytics():
+def get_budget_analytics(team_name: Optional[str] = None, month: Optional[str] = None):
     with Session(engine) as session:
-        executions = session.exec(select(Execution)).all()
-        workflows = session.exec(select(Workflow)).all()
+        wf_query = select(Workflow)
+        if team_name:
+            wf_query = wf_query.where(Workflow.team_name == team_name)
+        workflows = session.exec(wf_query).all()
+        wf_ids = [w.id for w in workflows]
+
+        if not wf_ids:
+            return {"total_spend": 0.0, "total_cost": 0.0, "total_margin": 0.0, "by_team": [], "by_month": []}
+
+        ex_query = select(Execution).where(Execution.workflow_id.in_(wf_ids))
+        if month:
+            ex_query = ex_query.where(Execution.date.startswith(month))
+        executions = session.exec(ex_query).all()
 
     wf_map = {w.id: w for w in workflows}
-    
+
     total_spend = 0.0
     total_cost = 0.0
-    by_team = {}
-    by_month = {}
-    
+    by_team: dict = {}
+    by_month: dict = {}
+
     for e in executions:
         total_spend += e.total_price or 0.0
         total_cost += e.cost or 0.0
-        
+
         wf = wf_map.get(e.workflow_id)
         if wf:
             team_key = wf.team_name
@@ -562,18 +632,18 @@ def get_budget_analytics():
             team_stats["spend"] += e.total_price or 0.0
             team_stats["meals"] += 1
             by_team[team_key] = team_stats
-            
+
         # Group by month
-        month = e.date[:7] # YYYY-MM
-        month_stats = by_month.get(month, {"spend": 0.0, "meals": 0})
+        month_key = e.date[:7]  # YYYY-MM
+        month_stats = by_month.get(month_key, {"spend": 0.0, "meals": 0})
         month_stats["spend"] += e.total_price or 0.0
         month_stats["meals"] += 1
-        by_month[month] = month_stats
-        
+        by_month[month_key] = month_stats
+
     # Reformat for frontend
     team_list = [{"name": k, **v} for k, v in by_team.items()]
     month_list = [{"month": k, **v} for k, v in by_month.items()]
-    
+
     return {
         "total_spend": total_spend,
         "total_cost": total_cost,
