@@ -80,14 +80,10 @@ export function PageTeams({ showToast }) {
   const formValid = form.name.trim() && form.schoolName.trim() && form.sport.trim()
 
   return (
-    <div className="page" style={{ padding: '28px 32px', maxWidth: 1200 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>Teams</h2>
-          <p style={{ color: '#718096', margin: 0 }}>Manage team profiles and default preferences.</p>
-        </div>
-        <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
-          <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'white' }}>{showForm ? 'close' : 'add'}</span>
+    <div className="page" style={{ padding: '12px 24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button className="btn-primary" style={{ padding: '6px 14px', fontSize: 12 }} onClick={() => setShowForm((v) => !v)}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'white' }}>{showForm ? 'close' : 'add'}</span>
           {showForm ? 'Cancel' : 'New Team'}
         </button>
       </div>

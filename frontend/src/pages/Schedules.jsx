@@ -200,31 +200,11 @@ export function PageSchedules({ S, go, onDaySelect, onSubmitSchedule, showToast 
   }
 
   return (
-    <div className="page" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-
-      {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 4, background: '#F1F5F9', padding: 4, borderRadius: 10 }}>
-          <button
-            className={tab === 'intake' ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 20px', fontSize: 13 }}
-            onClick={() => navigate('/schedules?tab=intake')}
-          >
-            Create Schedule
-          </button>
-          <button
-            className={tab === 'calendar' ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 20px', fontSize: 13 }}
-            onClick={() => navigate('/schedules?tab=calendar')}
-          >
-            Calendar
-          </button>
-        </div>
-      </div>
+    <div className="page" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
       {/* Calendar tab */}
       {tab === 'calendar' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '12px 16px' }}>
 
           {/* Main Calendar */}
           <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', flex: 1 }}>
@@ -350,7 +330,8 @@ function NewTripPanel({ onClose, onSubmitSchedule, defaultTeam, defaultHeadcount
   const [csvError, setCsvError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [lookingUpAddr, setLookingUpAddr] = useState(new Set())
-  const pageSize = 15
+  const [perPage, setPerPage] = useState(8)
+  const pageSize = perPage
   const pageCount = Math.max(1, Math.ceil(draftRows.length / pageSize))
   const pageStart = (page - 1) * pageSize
   const pagedRows = draftRows.slice(pageStart, pageStart + pageSize)
@@ -609,15 +590,14 @@ function NewTripPanel({ onClose, onSubmitSchedule, defaultTeam, defaultHeadcount
       >
         {/* Panel header with Progress Bar */}
         <div style={{ padding: '12px 20px', borderBottom: '1px solid #E2E8F0', background: 'white', zIndex: 1, flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontSize: 16, fontWeight: 900 }}>Create Schedule</div>
-            {!inline && (
+          {!inline && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8 }}>
               <button onClick={handleClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#718096' }}>close</span>
               </button>
-            )}
-          </div>
-          
+            </div>
+          )}
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {[
               { id: 1, label: 'Entry' },
@@ -644,14 +624,14 @@ function NewTripPanel({ onClose, onSubmitSchedule, defaultTeam, defaultHeadcount
         <div style={{ flex: 1, overflowY: 'auto', background: '#F8FAFC', minHeight: 0 }}>
           
           {panelStep === 1 && (
-            <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 32, minHeight: '100%' }}>
+            <div style={{ padding: '24px 40px 40px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 28 }}>
               <div style={{ textAlign: 'center' }}>
                 <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>How would you like to start?</h2>
                 <p style={{ color: '#718096' }}>Select an option to begin creating your meal schedule.</p>
               </div>
 
               {mode !== 'paste' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: '100%', maxWidth: 700 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: '100%', maxWidth: 560 }}>
                   <button 
                     onClick={() => setMode('paste')}
                     style={{ 
@@ -803,193 +783,243 @@ function NewTripPanel({ onClose, onSubmitSchedule, defaultTeam, defaultHeadcount
           )}
 
           {panelStep === 3 && (
-            <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflow: 'hidden' }}>
-              <div style={{ background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #EEF1F5', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                  <button className="btn-secondary" style={{ padding: '4px 10px', display: 'flex', alignItems: 'center' }} onClick={() => setPanelStep(2)}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_back</span>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              {/* Header bar */}
+              <div style={{ padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #EEF1F5', background: 'white', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button onClick={() => setPanelStep(2)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#475569' }}>arrow_back</span>
                   </button>
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>Draft Itinerary</div>
-                  <span className="badge badge-blue" style={{ marginLeft: 'auto' }}>{draftRows.length} rows</span>
-                </div>
-                <div style={{ overflow: 'auto', flex: 1 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                    <colgroup>
-                      <col style={{ width: 74 }} />
-                      <col style={{ width: 100 }} />
-                      <col style={{ width: 78 }} />
-                      <col style={{ width: '18%' }} />
-                      <col style={{ width: '22%' }} />
-                      <col style={{ width: '22%' }} />
-                      <col style={{ width: 32 }} />
-                    </colgroup>
-                    <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                      <tr style={{ background: '#FAFBFC', borderBottom: '1px solid #E2E8F0' }}>
-                        {['DATE','MEAL','TIME','VENDOR NAME','VENDOR ADDRESS','DELIVERY ADDRESS',''].map(h => (
-                          <th key={h} style={{ padding: '7px 8px', textAlign: 'left', fontSize: 9, fontWeight: 800, color: '#A0AEC0', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {draftRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#718096' }}>No meal rows yet.</td>
-                        </tr>
-                      ) : (
-                        pagedRows.map((r, idx) => {
-                          const globalIdx = pageStart + idx
-                          const hasVendor = r.vendor && !r.isTbd
-                          return (
-                            <tr key={`${globalIdx}-${r.date}-${r.mealType}`} style={{ borderBottom: '1px solid #F4F6F9', background: r.isTbd ? '#FFFDF5' : 'white' }}>
-                              {/* DATE */}
-                              <td style={{ padding: '5px 8px', fontSize: 11, whiteSpace: 'nowrap' }}>
-                                <div style={{ fontWeight: 700 }}>{fmtDateShort(r.date)}</div>
-                                <div style={{ fontSize: 10, color: '#A0AEC0' }}>{new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                              </td>
-                              {/* MEAL */}
-                              <td style={{ padding: '5px 8px' }}>
-                                <select
-                                  className="form-field"
-                                  style={{ padding: '4px 6px', fontSize: 11, width: '100%' }}
-                                  value={r.mealType}
-                                  onChange={e => {
-                                    const mt = e.target.value
-                                    updateRow(globalIdx, { mealType: mt, time: r.time === MEAL_DEFAULTS[r.mealType] ? MEAL_DEFAULTS[mt] : r.time })
-                                  }}
-                                >
-                                  {MEAL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-                                </select>
-                              </td>
-                              {/* TIME */}
-                              <td style={{ padding: '5px 8px' }}>
-                                <input
-                                  className="form-field"
-                                  type="time"
-                                  style={{ padding: '4px 6px', fontSize: 11, width: '100%' }}
-                                  value={r.time || ''}
-                                  onChange={e => updateRow(globalIdx, { time: e.target.value || MEAL_DEFAULTS[r.mealType] })}
-                                />
-                              </td>
-                              {/* VENDOR NAME */}
-                              <td style={{ padding: '5px 8px' }}>
-                                {r.tbdReason === 'multiple_options' && r.vendor ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <select
-                                      className="form-field"
-                                      style={{ padding: '4px 6px', fontSize: 11, flex: 1, borderColor: '#FCD34D', background: '#FFFBEB' }}
-                                      value=""
-                                      onChange={e => { if (e.target.value) pickVendor(globalIdx, e.target.value) }}
-                                    >
-                                      <option value="">Pick one…</option>
-                                      {r.vendor.split(/ or /i).map((opt, oi) => (
-                                        <option key={oi} value={opt.trim()}>{opt.trim()}</option>
-                                      ))}
-                                    </select>
-                                    <span style={{ fontSize: 9, fontWeight: 800, background: '#FEF3C7', color: '#92400E', padding: '2px 5px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0 }}>PICK</span>
-                                  </div>
-                                ) : (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <input
-                                      className="form-field"
-                                      style={{ padding: '4px 6px', fontSize: 11, flex: 1, borderColor: r.isTbd ? '#FCD34D' : undefined, background: r.isTbd ? '#FFFBEB' : undefined }}
-                                      value={r.vendor || ''}
-                                      onChange={e => updateRow(globalIdx, { vendor: e.target.value || null, isTbd: false, tbdReason: null })}
-                                      placeholder="Restaurant name…"
-                                    />
-                                    {r.isTbd && (
-                                      <span style={{ fontSize: 9, fontWeight: 800, background: '#FEF3C7', color: '#92400E', padding: '2px 5px', borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0 }}>TBD</span>
-                                    )}
-                                  </div>
-                                )}
-                                {r.notes && <div style={{ fontSize: 9, color: '#718096', marginTop: 2 }}>{r.notes}</div>}
-                              </td>
-                              {/* VENDOR ADDRESS — auto-populated, shown only when vendor exists */}
-                              <td style={{ padding: '5px 8px' }}>
-                                {hasVendor ? (
-                                  <div style={{ position: 'relative' }}>
-                                    <input
-                                      className="form-field"
-                                      style={{ padding: '4px 6px', fontSize: 11, width: '100%', boxSizing: 'border-box', color: lookingUpAddr.has(globalIdx) ? '#93C5FD' : undefined }}
-                                      value={r.vendorAddress || ''}
-                                      onChange={e => updateRow(globalIdx, { vendorAddress: e.target.value || null, vendorAddressCandidates: null })}
-                                      placeholder={lookingUpAddr.has(globalIdx) ? 'Looking up…' : 'Auto-filled or type'}
-                                      disabled={lookingUpAddr.has(globalIdx)}
-                                    />
-                                    {r.vendorAddressCandidates?.length > 0 && (
-                                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden' }}>
-                                        {r.vendorAddressCandidates.map((c, ci) => (
-                                          <div key={ci} onClick={() => updateRow(globalIdx, { vendorAddress: c.address, vendorAddressCandidates: null })}
-                                            style={{ padding: '6px 8px', cursor: 'pointer', fontSize: 11, borderBottom: ci < r.vendorAddressCandidates.length - 1 ? '1px solid #F4F6F9' : 'none' }}>
-                                            <div style={{ fontWeight: 700 }}>{c.name}</div>
-                                            <div style={{ color: '#718096', fontSize: 10 }}>{c.address}</div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span style={{ fontSize: 10, color: '#CBD5E0', fontStyle: 'italic' }}>—</span>
-                                )}
-                              </td>
-                              {/* DELIVERY ADDRESS — user types, autocomplete */}
-                              <td style={{ padding: '5px 8px' }}>
-                                <AddressInput
-                                  value={r.deliveryAddress || ''}
-                                  onChange={v => updateRow(globalIdx, { deliveryAddress: v || null })}
-                                  placeholder="Delivery address…"
-                                  city={city}
-                                  state={state}
-                                  style={{ padding: '4px 6px', fontSize: 11 }}
-                                />
-                              </td>
-                              {/* DELETE */}
-                              <td style={{ padding: '5px 4px', textAlign: 'center' }}>
-                                <button style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 2 }} onClick={() => removeRow(globalIdx)}>
-                                  <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#CBD5E0' }}>delete_outline</span>
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>Draft Itinerary</div>
+                    <div style={{ fontSize: 12, color: '#718096' }}>
+                      {draftRows.length} meals total
+                      {draftRows.filter(r => r.isTbd).length > 0 && (
+                        <span style={{ marginLeft: 8, color: '#92400E', fontWeight: 700 }}>
+                          · {draftRows.filter(r => r.isTbd).length} Unassigned
+                        </span>
                       )}
-                    </tbody>
-                  </table>
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              {pageCount > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 18 }}>
-                  <button className="btn-secondary" disabled={page === 1} style={{ padding: '6px 16px', fontSize: 12 }} onClick={() => setPage(p => Math.max(1, p - 1))}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_left</span> Previous
-                  </button>
-                  <span style={{ fontSize: 12, color: '#718096' }}>Page {page} / {pageCount}</span>
-                  <button className="btn-secondary" disabled={page === pageCount} style={{ padding: '6px 16px', fontSize: 12 }} onClick={() => setPage(p => Math.min(pageCount, p + 1))}>
-                    Next <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
-                  </button>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                <div style={{ fontSize: 14, color: '#718096' }}>
-                  {draftRows.length} meal rows
-                  {draftRows.filter(r => r.isTbd).length > 0 && (
-                    <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '2px 8px', borderRadius: 10 }}>
-                      {draftRows.filter(r => r.isTbd).length} TBD — review before submitting
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 10 }}>
                   <button className="btn-secondary" onClick={() => setPanelStep(2)}>Back</button>
                   <button className="btn-primary" disabled={missing.length > 0 || submitting} onClick={submit}>
                     {submitting ? 'Submitting...' : 'Submit Schedule'}
                   </button>
                 </div>
               </div>
+
               {missing.length > 0 && (
-                <div style={{ background: '#FFF1F2', border: '1.5px solid #FECDD3', borderRadius: 12, padding: 14, color: '#9B1C1C', fontSize: 13, flexShrink: 0 }}>
-                  <strong>Missing info:</strong> {missing.join(', ')}.
+                <div style={{ padding: '8px 24px', background: '#FFF1F2', borderBottom: '1px solid #FECDD3', color: '#9B1C1C', fontSize: 12, flexShrink: 0 }}>
+                  <strong>Missing:</strong> {missing.join(', ')}
                 </div>
               )}
+
+              {/* Table — no scroll, rows fit to page */}
+              <div style={{ flex: 1 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: 80 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 80 }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: 36 }} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                      {['Date','Meal','Time','Vendor Name','Vendor Address','Delivery Address',''].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap', background: 'white' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draftRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 48, textAlign: 'center', color: '#A0AEC0', fontSize: 13 }}>No meal rows yet.</td>
+                      </tr>
+                    ) : (
+                      pagedRows.map((r, idx) => {
+                        const globalIdx = pageStart + idx
+                        const hasVendor = r.vendor && !r.isTbd
+                        return (
+                          <tr key={`${globalIdx}-${r.date}-${r.mealType}`} style={{ borderBottom: '1px solid #EEF1F5' }}>
+                            {/* DATE */}
+                            <td style={{ padding: '12px 12px', fontSize: 13 }}>
+                              <div style={{ fontWeight: 700 }}>{fmtDateShort(r.date)}</div>
+                              <div style={{ fontSize: 11, color: '#A0AEC0' }}>{new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                            </td>
+                            {/* MEAL */}
+                            <td style={{ padding: '12px 12px' }}>
+                              <select
+                                className="form-field"
+                                style={{ padding: '5px 8px', fontSize: 12, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                value={r.mealType}
+                                onChange={e => {
+                                  const mt = e.target.value
+                                  updateRow(globalIdx, { mealType: mt, time: r.time === MEAL_DEFAULTS[r.mealType] ? MEAL_DEFAULTS[mt] : r.time })
+                                }}
+                              >
+                                {MEAL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </td>
+                            {/* TIME */}
+                            <td style={{ padding: '12px 12px' }}>
+                              <input
+                                className="form-field"
+                                type="time"
+                                style={{ padding: '5px 8px', fontSize: 12, width: '100%', border: 'none', background: 'transparent' }}
+                                value={r.time || ''}
+                                onChange={e => updateRow(globalIdx, { time: e.target.value || MEAL_DEFAULTS[r.mealType] })}
+                              />
+                            </td>
+                            {/* VENDOR NAME */}
+                            <td style={{ padding: '12px 12px' }}>
+                              {r.tbdReason === 'multiple_options' && r.vendor ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <select
+                                    className="form-field"
+                                    style={{ padding: '5px 8px', fontSize: 12, flex: 1, borderColor: '#FCD34D', background: '#FFFBEB' }}
+                                    value=""
+                                    onChange={e => { if (e.target.value) pickVendor(globalIdx, e.target.value) }}
+                                  >
+                                    <option value="">Pick one…</option>
+                                    {r.vendor.split(/ or /i).map((opt, oi) => (
+                                      <option key={oi} value={opt.trim()}>{opt.trim()}</option>
+                                    ))}
+                                  </select>
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#92400E', whiteSpace: 'nowrap' }}>PICK</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <input
+                                      className="form-field"
+                                      style={{ padding: '5px 8px', fontSize: 12, flex: 1, border: r.isTbd ? '1px solid #FCD34D' : 'none', background: r.isTbd ? '#FFFBEB' : 'transparent' }}
+                                      value={r.vendor || ''}
+                                      onChange={e => {
+                                        const v = e.target.value.trim()
+                                        if (v) {
+                                          updateRow(globalIdx, { vendor: e.target.value, isTbd: false, tbdReason: null })
+                                        } else {
+                                          updateRow(globalIdx, { vendor: null, isTbd: true, tbdReason: 'no_vendor' })
+                                        }
+                                      }}
+                                      placeholder="Restaurant name…"
+                                    />
+                                    {r.isTbd && (
+                                      <span style={{ fontSize: 10, fontWeight: 700, color: '#92400E', whiteSpace: 'nowrap' }}>Unassigned</span>
+                                    )}
+                                  </div>
+                                  {r.notes && <div style={{ fontSize: 10, color: '#718096', marginTop: 2, paddingLeft: 8 }}>{r.notes}</div>}
+                                </div>
+                              )}
+                            </td>
+                            {/* VENDOR ADDRESS */}
+                            <td style={{ padding: '12px 12px' }}>
+                              {hasVendor ? (
+                                <div style={{ position: 'relative' }}>
+                                  <input
+                                    className="form-field"
+                                    style={{ padding: '5px 8px', fontSize: 12, width: '100%', boxSizing: 'border-box', border: 'none', background: 'transparent', color: lookingUpAddr.has(globalIdx) ? '#93C5FD' : undefined }}
+                                    value={r.vendorAddress || ''}
+                                    onChange={e => updateRow(globalIdx, { vendorAddress: e.target.value || null, vendorAddressCandidates: null })}
+                                    placeholder={lookingUpAddr.has(globalIdx) ? 'Looking up…' : 'Auto-filled or type'}
+                                    disabled={lookingUpAddr.has(globalIdx)}
+                                  />
+                                  {r.vendorAddressCandidates?.length > 0 && (
+                                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #E2E8F0', borderRadius: 8, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 50, overflow: 'hidden' }}>
+                                      {r.vendorAddressCandidates.map((c, ci) => (
+                                        <div key={ci} onClick={() => updateRow(globalIdx, { vendorAddress: c.address, vendorAddressCandidates: null })}
+                                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12, borderBottom: ci < r.vendorAddressCandidates.length - 1 ? '1px solid #F4F6F9' : 'none' }}>
+                                          <div style={{ fontWeight: 700 }}>{c.name}</div>
+                                          <div style={{ color: '#718096', fontSize: 11 }}>{c.address}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: 12, color: '#CBD5E0' }}>—</span>
+                              )}
+                            </td>
+                            {/* DELIVERY ADDRESS */}
+                            <td style={{ padding: '12px 12px' }}>
+                              <AddressInput
+                                value={r.deliveryAddress || ''}
+                                onChange={v => updateRow(globalIdx, { deliveryAddress: v || null })}
+                                placeholder="Delivery address…"
+                                city={city}
+                                state={state}
+                                style={{ padding: '5px 8px', fontSize: 12, border: 'none', background: 'transparent' }}
+                              />
+                            </td>
+                            {/* DELETE */}
+                            <td style={{ padding: '12px 4px', textAlign: 'center' }}>
+                              <button style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => removeRow(globalIdx)}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#CBD5E0' }}>delete_outline</span>
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination footer */}
+              <div style={{ padding: '10px 24px', borderTop: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', flexShrink: 0 }}>
+                <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
+                  Total: {draftRows.length}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button
+                    disabled={page === 1}
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    style={{ width: 32, height: 32, border: '1px solid #E2E8F0', borderRadius: 8, background: 'white', cursor: page === 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: page === 1 ? 0.4 : 1 }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#475569' }}>chevron_left</span>
+                  </button>
+                  {Array.from({ length: pageCount }, (_, i) => i + 1).slice(
+                    Math.max(0, Math.min(page - 3, pageCount - 5)),
+                    Math.max(5, page + 2)
+                  ).map(p => (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      style={{
+                        width: 32, height: 32, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: p === page ? '1.5px solid #0F62FE' : '1px solid #E2E8F0',
+                        background: p === page ? '#EBF2FF' : 'white',
+                        color: p === page ? '#0F62FE' : '#475569',
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <button
+                    disabled={page === pageCount}
+                    onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                    style={{ width: 32, height: 32, border: '1px solid #E2E8F0', borderRadius: 8, background: 'white', cursor: page === pageCount ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: page === pageCount ? 0.4 : 1 }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#475569' }}>chevron_right</span>
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#475569' }}>
+                  <span>Per page:</span>
+                  <select
+                    value={pageSize}
+                    onChange={e => { setPerPage(Number(e.target.value)); setPage(1) }}
+                    style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: '4px 8px', fontSize: 13, cursor: 'pointer', background: 'white' }}
+                  >
+                    {[5, 8, 10, 15].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
           )}
         </div>

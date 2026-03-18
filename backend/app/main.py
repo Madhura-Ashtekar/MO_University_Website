@@ -1,14 +1,37 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    force=True,   # override uvicorn's default config so our loggers actually print
+)
+logger = logging.getLogger(__name__)
+# Ensure our app loggers are not silenced by uvicorn
+logging.getLogger("app").setLevel(logging.INFO)
+logging.getLogger("app.llm_parser").setLevel(logging.INFO)
 from datetime import datetime
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
 
 from .db import engine, init_db
+import httpx
+from .config import validate_env, get_sandbox_status, GOOGLE_PLACES_API_KEY
+from .integrations import (
+    stripe_create_customer,
+    stripe_create_invoice,
+    stripe_finalize_invoice,
+    nash_create_delivery,
+)
+from .llm_parser import parse_email_with_llm
 from .logic import classify, derive_event_context
 from .models import AdminQueueItem, Execution, Workflow, Team
 from .schemas import (
@@ -26,6 +49,7 @@ from .schemas import (
 
 @asynccontextmanager
 async def lifespan(app):
+    validate_env()
     init_db()
     yield
 
@@ -54,7 +78,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", **get_sandbox_status()}
 
 
 @app.get("/teams", response_model=list[TeamSummary])
@@ -87,6 +111,7 @@ def list_teams():
 
 @app.post("/teams", response_model=TeamSummary)
 def create_team(payload: TeamCreate):
+    stripe_cid = payload.stripeCustomerId or stripe_create_customer(payload.name, payload.schoolName)
     with Session(engine) as session:
         team = Team(
             name=payload.name,
@@ -99,7 +124,7 @@ def create_team(payload: TeamCreate):
             default_veg_pct=payload.defaultVegPct,
             default_gf_pct=payload.defaultGfPct,
             default_nf_pct=payload.defaultNfPct,
-            stripe_customer_id=payload.stripeCustomerId,
+            stripe_customer_id=stripe_cid,
         )
         session.add(team)
         session.commit()
@@ -237,6 +262,17 @@ def get_workflow(workflow_id: str):
 
 @app.post("/workflows/from-draft")
 def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
+    tbd_rows = [r for r in draft.rows if r.notes and ("TBD" in r.notes.upper() or "OR" in r.notes.upper())]
+    logger.info("══ SUBMIT SCHEDULE ══ name=%r  team=%r  sport=%r  rows=%d  tbd=%d",
+                draft.name, draft.teamName, draft.sport or "—", len(draft.rows), len(tbd_rows))
+    logger.info("  city=%r  state=%r  division=%r  headcount=%s",
+                draft.city or "—", draft.state or "—", draft.division or "—",
+                draft.rows[0].headcount if draft.rows else "—")
+    logger.info("  %-12s %-12s %-10s %-12s %s", "DATE", "MEAL", "LOCATION", "FULFILLMENT", "NOTES")
+    logger.info("  %s", "─" * 70)
+    for r in draft.rows:
+        logger.info("  %-12s %-12s %-10s %s", r.date, r.mealType, r.locationType, r.notes[:60] if r.notes else "—")
+
     # Resolve team_id by matching name+school so the FK is populated.
     team_id: str | None = None
     with Session(engine) as session:
@@ -304,6 +340,8 @@ def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
         if fulfillment_type == "tbd":
             queue_items.append(AdminQueueItem(type="resolve_tbd", workflow_id=workflow_id, execution_id=exe.id, status="open"))
 
+    tbd_count = sum(1 for q in queue_items if q.type == "resolve_tbd")
+
     with Session(engine) as session:
         session.add(workflow)
         for e in executions:
@@ -312,6 +350,8 @@ def create_workflow_from_draft(draft: WorkflowCreateFromDraft):
             session.add(q)
         session.commit()
 
+    logger.info("  ✓ Saved workflow_id=%s  executions=%d  tbd=%d  queue_items=%d",
+                workflow_id, len(executions), tbd_count, len(queue_items))
     return {"workflow_id": workflow_id}
 
 
@@ -467,6 +507,30 @@ def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
                         "tbd_count": len(tbd_execs),
                     },
                 )
+            # Create Stripe invoice with MO execution line items
+            mo_execs = session.exec(
+                select(Execution).where(
+                    Execution.workflow_id == workflow_id,
+                    Execution.mo_fulfills == True,  # noqa: E712
+                )
+            ).all()
+            team = session.get(Team, w.team_id) if w.team_id else None
+            stripe_cid = team.stripe_customer_id if team else None
+            if mo_execs and stripe_cid:
+                line_items = [
+                    {
+                        "description": f"{e.meal_type} — {e.date} ({e.headcount} ppl)",
+                        "unit_amount_cents": int(e.unit_price * 100),
+                        "quantity": e.headcount,
+                    }
+                    for e in mo_execs
+                    if e.unit_price > 0
+                ]
+                if line_items:
+                    inv_id = stripe_create_invoice(stripe_cid, w.name, line_items)
+                    if inv_id:
+                        w.stripe_invoice_id = inv_id
+
             close_type = "billing_prep"
             open_next = "dispatch_approval"
             w.status = "billing_prepped"
@@ -503,25 +567,34 @@ def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
                         "incomplete_executions": missing_fields,
                     }
                 )
-            nash_deliveries = []
+            # Dispatch each MO delivery via Nash (sandbox or stub)
+            dispatched_count = 0
             for exe in mo_executions:
                 exe.status = "dispatched"
                 exe.updated_at = datetime.utcnow()
+                if exe.fulfillment_type == "mo_delivery":
+                    delivery_id = nash_create_delivery({
+                        "execution_id": exe.id,
+                        "date": exe.date,
+                        "time": exe.time,
+                        "headcount": exe.headcount,
+                        "pickup_address": exe.pickup_address,
+                        "delivery_address": exe.delivery_address,
+                        "pickup_contact_name": exe.pickup_contact_name,
+                        "pickup_contact_phone": exe.pickup_contact_phone,
+                        "delivery_contact_name": exe.delivery_contact_name,
+                        "delivery_contact_phone": exe.delivery_contact_phone,
+                        "delivery_window_start": exe.delivery_window_start,
+                        "delivery_window_end": exe.delivery_window_end,
+                    })
+                    if delivery_id:
+                        exe.nash_delivery_id = delivery_id
                 session.add(exe)
-                nash_deliveries.append({
-                    "execution_id": exe.id,
-                    "date": exe.date,
-                    "time": exe.time,
-                    "headcount": exe.headcount,
-                    "pickup_address": exe.pickup_address,
-                    "delivery_address": exe.delivery_address,
-                    "delivery_window_start": exe.delivery_window_start,
-                    "delivery_window_end": exe.delivery_window_end,
-                })
-            # Log what would be sent to Nash (swap for real HTTP call with NASH_API_KEY)
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info("[NASH STUB] Would dispatch %d deliveries for workflow %s: %s", len(nash_deliveries), workflow_id, nash_deliveries)
+                dispatched_count += 1
+
+            # Finalize Stripe invoice on dispatch
+            if w.stripe_invoice_id:
+                stripe_finalize_invoice(w.stripe_invoice_id)
         else:
             raise HTTPException(status_code=400, detail="unknown action")
 
@@ -549,7 +622,7 @@ def advance_workflow(workflow_id: str, payload: AdvanceWorkflowRequest):
         session.commit()
         resp: dict = {"ok": True, "status": w.status}
         if action == "dispatch_approve":
-            resp["dispatched_count"] = len(nash_deliveries)
+            resp["dispatched_count"] = dispatched_count
         return resp
 
 
@@ -595,6 +668,92 @@ def get_calendar(month: str):
     # Sort by date then time (nulls last)
     events.sort(key=lambda x: (x["date"], x["time"] or "99:99"))
     return {"events": events}
+
+
+class ParseIntakeRequest(BaseModel):
+    text: str
+    year: int = 2026
+    team: str = ""
+    school: str = ""
+
+@app.post("/intake/parse")
+def intake_parse(req: ParseIntakeRequest):
+    """
+    LLM-powered email parser. Returns { rows, metadata, source }.
+    source = "llm" if Claude was used, "unavailable" if no API key.
+    Falls back to client-side parser (source="unavailable") gracefully.
+    """
+    logger.info("── PARSE REQUEST ── team=%r  school=%r  text_len=%d chars",
+                req.team or "?", req.school or "?", len(req.text))
+    result = parse_email_with_llm(req.text, year=req.year, team=req.team, school=req.school)
+    if result is None:
+        logger.info("  → No LLM available, returning unavailable (frontend uses local parser)")
+        return {"rows": None, "metadata": None, "source": "unavailable"}
+    return result
+
+
+class PlacesLookupRequest(BaseModel):
+    vendor: str
+    location_hint: str = ""
+    city: str = ""
+    state: str = ""
+
+
+@app.post("/places/lookup")
+async def places_lookup(req: PlacesLookupRequest):
+    """
+    Lookup a vendor address via Google Places Text Search.
+    Returns unique=True + address when exactly one result is found (auto-fill safe).
+    Returns unique=False when multiple results exist (chain restaurant — let user fill).
+    """
+    if not GOOGLE_PLACES_API_KEY:
+        return {"unique": False, "address": None, "candidates": [], "error": "Google Places API key not configured"}
+
+    # Use locationHint if available (meal-specific area like "College Park"),
+    # otherwise fall back to trip city/state (less specific but better than nothing)
+    location_context = req.location_hint or " ".join(filter(None, [req.city, req.state]))
+    query = f"{req.vendor} {location_context}".strip() if location_context else req.vendor
+
+    import time as _time
+    t0 = _time.time()
+    logger.info("  📍 Places lookup: %r  (query: %r)", req.vendor, query)
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(
+                "https://places.googleapis.com/v1/places:searchText",
+                headers={
+                    "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+                    "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.id",
+                    "Content-Type": "application/json",
+                },
+                json={"textQuery": query, "maxResultCount": 5},
+            )
+        data = resp.json()
+        candidates = [
+            {
+                "name": p.get("displayName", {}).get("text", req.vendor),
+                "address": p.get("formattedAddress", ""),
+            }
+            for p in data.get("places", [])
+        ]
+        unique = len(candidates) == 1
+        elapsed = _time.time() - t0
+        if unique:
+            logger.info("  ✓ Unique match (%.2fs): %s — %s", elapsed, candidates[0]["name"], candidates[0]["address"])
+        else:
+            logger.info("  ⚠ %d results (%.2fs) — user must pick. Options: %s",
+                        len(candidates), elapsed,
+                        ", ".join(c["name"] for c in candidates[:3]) + ("…" if len(candidates) > 3 else ""))
+        return {
+            "unique": unique,
+            "address": candidates[0]["address"] if unique else None,
+            "name": candidates[0]["name"] if unique else None,
+            "candidates": candidates,
+            "query": query,
+        }
+    except Exception as exc:
+        logger.warning("  ✗ Google Places lookup failed: %s", exc)
+        return {"unique": False, "address": None, "candidates": [], "error": str(exc)}
 
 
 @app.get("/analytics/budget")

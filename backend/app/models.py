@@ -105,6 +105,9 @@ class Execution(SQLModel, table=True):
     delivery_window_start: Optional[str] = None
     delivery_window_end: Optional[str] = None
 
+    # Nash tracking
+    nash_delivery_id: Optional[str] = None
+
     status: str = Field(default="submitted")
 
     created_at: datetime = Field(default_factory=utcnow)

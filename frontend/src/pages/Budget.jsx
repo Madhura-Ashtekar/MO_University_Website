@@ -27,30 +27,22 @@ export function PageBudget({ go, showToast }) {
   if (loading && !stats) return <div className="page" style={{ padding: 40, textAlign: 'center' }}>Loading budget analytics...</div>
 
   return (
-    <div className="page" style={{ padding: '28px 32px', maxWidth: 1280, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32, gap: 20, flexWrap: 'wrap' }}>
-        <div>
-          <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>Budget Analytics</h2>
-          <p style={{ color: '#718096', margin: 0 }}>Track spending across teams and travel periods.</p>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select className="form-field" style={{ minWidth: 200 }} value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)}>
-            <option value="">All Teams</option>
-            {allTeams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
-          </select>
-          <input className="form-field" type="month" style={{ minWidth: 150 }} value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} title="Filter by month" />
-          {(filterTeam || filterMonth) && (
-            <button className="btn-secondary" style={{ padding: '8px 12px', fontSize: 12 }} onClick={() => { setFilterTeam(''); setFilterMonth('') }}>Clear filters</button>
-          )}
-        </div>
+    <div className="page" style={{ padding: '12px 24px', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
+        <select className="form-field" style={{ minWidth: 180, padding: '6px 10px', fontSize: 12 }} value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)}>
+          <option value="">All Teams</option>
+          {allTeams.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
+        </select>
+        <input className="form-field" type="month" style={{ minWidth: 140, padding: '6px 10px', fontSize: 12 }} value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} title="Filter by month" />
+        {(filterTeam || filterMonth) && (
+          <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: 11 }} onClick={() => { setFilterTeam(''); setFilterMonth('') }}>Clear</button>
+        )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20, marginBottom: 32 }}>
         {[
           { label: 'Total Spend', val: `$${(stats?.total_spend || 0).toLocaleString()}`, icon: 'payments', bg: '#EBF2FF', tx: '#0F62FE' },
           { label: 'Total Cost', val: `$${(stats?.total_cost || 0).toLocaleString()}`, icon: 'account_balance_wallet', bg: '#F0FDF4', tx: '#166534' },
-          { label: 'Estimated Margin', val: `$${(stats?.total_margin || 0).toLocaleString()}`, icon: 'trending_up', bg: '#F0F9FF', tx: '#0369A1' },
-          { label: 'Meals Tracked', val: String(stats?.by_month.reduce((acc, m) => acc + m.meals, 0) || 0), icon: 'restaurant', bg: '#FDF2F8', tx: '#9D174D' },
         ].map((s) => (
           <div key={s.label} style={{ background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
@@ -64,10 +56,10 @@ export function PageBudget({ go, showToast }) {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, flex: 1, minHeight: 0, overflow: 'hidden' }}>
         
         {/* Spend by Team */}
-        <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', overflow: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #EEF1F5', background: '#FAFBFC' }}>
             <span style={{ fontSize: 14, fontWeight: 800 }}>Spend by Team</span>
           </div>
@@ -98,7 +90,7 @@ export function PageBudget({ go, showToast }) {
         </div>
 
         {/* Spend by Month */}
-        <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', overflow: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #EEF1F5', background: '#FAFBFC' }}>
             <span style={{ fontSize: 14, fontWeight: 800 }}>Monthly Spend Trend</span>
           </div>
@@ -130,18 +122,6 @@ export function PageBudget({ go, showToast }) {
 
       </div>
 
-      <div style={{ marginTop: 24, background: '#EBF2FF', border: '1.5px solid #BFDBFE', borderRadius: 16, padding: 20, display: 'flex', gap: 16 }}>
-        <div style={{ width: 44, height: 44, background: 'white', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#0F62FE' }}>insights</span>
-        </div>
-        <div>
-          <h4 style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>Spending Insights</h4>
-          <p style={{ fontSize: 12, color: '#1E40AF', margin: 0, lineHeight: 1.6 }}>
-            Your <strong>average meal cost per athlete</strong> is currently unavailable because financial data is not being captured at the order level yet. 
-            Once vendors are assigned and costs are logged in the <strong>Workflows</strong> page, you'll see per-meal benchmarking here.
-          </p>
-        </div>
-      </div>
     </div>
   )
 }

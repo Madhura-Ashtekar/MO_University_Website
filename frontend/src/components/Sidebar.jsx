@@ -3,9 +3,9 @@ import React from 'react'
 export function Sidebar({ navItems, page, go, tbdCount = 0 }) {
   return (
     <aside style={{ width: 220, minWidth: 220, height: '100vh', position: 'sticky', top: 0, background: 'white', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', padding: '0 12px 24px', zIndex: 40, overflow: 'hidden' }}>
-      <div style={{ padding: '18px 6px 20px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #EEF1F5', marginBottom: 12 }}>
-        <div style={{ width: 34, height: 34, background: '#0F62FE', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'white' }}>restaurant</span>
+      <div style={{ height: 48, padding: '0 6px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #EEF1F5', marginBottom: 12, flexShrink: 0 }}>
+        <div style={{ width: 30, height: 30, background: '#0F62FE', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'white' }}>restaurant</span>
         </div>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#0D1117', lineHeight: 1 }}>Meal Outpost</div>
@@ -22,7 +22,7 @@ export function Sidebar({ navItems, page, go, tbdCount = 0 }) {
               <span className="material-symbols-outlined icon" style={{ fontSize: 20 }}>{item.icon}</span>
               <span>{item.label}</span>
               {item.nb && <span style={{ marginLeft: 'auto', fontSize: 9, background: '#0F62FE', color: 'white', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>NEW</span>}
-              {item.id === 'schedules' && tbdCount > 0 && <span style={{ marginLeft: 'auto', fontSize: 9, background: '#D97706', color: 'white', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>{tbdCount} TBD</span>}
+              {item.id === 'tasks' && tbdCount > 0 && <span style={{ marginLeft: 'auto', fontSize: 9, background: '#D97706', color: 'white', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>{tbdCount}</span>}
             </button>
           )
         })}

@@ -19,10 +19,13 @@ import { PageWorkflows } from './pages/Workflows'
 import { PageNewSchedule } from './pages/NewSchedule'
 import { PageTeams } from './pages/Teams'
 import { PageBudget } from './pages/Budget'
+import { PageNotifications } from './pages/Notifications'
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', link: '/' },
-  { id: 'schedules', label: 'Schedules', icon: 'calendar_today', link: '/schedules' },
+  { id: 'schedules', label: 'Create Schedule', icon: 'edit_calendar', link: '/schedules' },
+  { id: 'orders', label: 'Orders', icon: 'list_alt', link: '/workflows' },
+  { id: 'tasks', label: 'Tasks', icon: 'assignment_late', link: '/notifications' },
   { id: 'teams', label: 'Teams', icon: 'groups', link: '/teams' },
   { id: 'budget', label: 'Budget', icon: 'payments', link: '/budget' },
 ]
@@ -104,6 +107,7 @@ function AppContent() {
 
   const [serverHealthy, setServerHealthy] = useState(true)
   const [serverMeta, setServerMeta] = useState({ workflows: 0, openQueue: 0, openTbd: 0 })
+  const [sandboxMode, setSandboxMode] = useState(null) // null = loading, object = status
   const [toast, setToast] = useState(null) // { text, type: 'success'|'error' }
 
   const showToast = (text, type = 'success') => {
@@ -139,15 +143,35 @@ function AppContent() {
 
   useEffect(() => {
     refreshMeta()
-    const timer = setInterval(refreshMeta, 30000)  // 30s — was 10s polling /workflows + /admin/queue
+    const timer = setInterval(refreshMeta, 30000)
     return () => clearInterval(timer)
   }, [refreshMeta])
 
+  useEffect(() => {
+    apiFetch('/health').then(data => {
+      setSandboxMode(data)
+      if (data.sandbox_mode) {
+        console.log('--- SYSTEM STATUS ---')
+        console.log(`SANDBOX MODE: ${data.sandbox_mode}`)
+        console.log(`STRIPE: ${data.stripe_enabled ? 'TEST MODE' : 'OFF'}`)
+        console.log(`NASH: ${data.nash_enabled ? 'SANDBOX' : 'OFF'}`)
+        console.log('---------------------')
+      }
+    }).catch(() => {})
+  }, [])
+
   // Helpers
   const upd = (k, v) => setS(p => ({ ...p, [k]: v }))
+  const EXTRA_ROUTES = {
+    'new-schedule':  '/new-schedule',
+    'intake':        '/schedules',
+    'workflows':     '/workflows',
+    'notifications': '/notifications',
+  }
   const go = (pageId) => {
     const item = NAV_ITEMS.find(n => n.id === pageId)
-    if (item) navigate(item.link)
+    if (item) { navigate(item.link); return }
+    if (EXTRA_ROUTES[pageId]) navigate(EXTRA_ROUTES[pageId])
   }
   const toggleChat = () => upd('showChat', !S.showChat)
   const sendChat = () => {
@@ -220,55 +244,58 @@ function AppContent() {
   const handleSubmitSchedule = async (draft) => {
     try {
       const result = await apiFetch('/workflows/from-draft', { method: 'POST', body: draft })
-      showToast('Workflow created successfully!')
+      showToast('Trip submitted successfully!')
       resetFormState()
       refreshMeta()
-      // Navigate to workflows page and highlight the new workflow via URL param
-      navigate(`/workflows?new=${result.workflow_id}`)
+      navigate(`/workflows?focus=${result.workflow_id}`)
     } catch (e) {
       showToast(e.message || 'Submit failed.', 'error')
     }
   }
 
   // Determine current page ID for sidebar highlighting
+  const EXTRA_TITLES = {}
   const currentPageId = NAV_ITEMS.find(n => n.link === location.pathname)?.id || 'dashboard'
-  const currentTitle = NAV_ITEMS.find(n => n.id === currentPageId)?.label || 'Dashboard'
+  const currentTitle = EXTRA_TITLES[location.pathname] || NAV_ITEMS.find(n => n.id === currentPageId)?.label || 'Dashboard'
 
   return (
-    <div className="app-container" style={{ display: 'flex', background: '#F8FAFC', minHeight: '100vh' }}>
+    <div className="app-container" style={{ display: 'flex', flexDirection: 'column', background: '#F8FAFC', height: '100vh', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <Sidebar navItems={NAV_ITEMS} page={currentPageId} go={go} tbdCount={serverMeta.openTbd} />
       
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
         <TopBar 
           title={currentTitle} 
-          crumbs={[{ label: 'Meal Outpost', link: 'dashboard' }, { label: currentTitle }]} 
           go={go} 
-          toggleChat={toggleChat} 
           demoMeta={serverMeta}
           serverHealthy={serverHealthy}
         />
         
-        <Routes>
-          <Route path="/" element={<PageDashboard go={go} toggleChat={toggleChat} serverMeta={serverMeta} showToast={showToast} />} />
-          <Route path="/schedules" element={<PageSchedules S={S} go={go} onDaySelect={(d) => upd('calDay', d)} onSubmitSchedule={handleSubmitSchedule} showToast={showToast} />} />
-          <Route path="/intake" element={<PageIntake defaultTeam={S.schTeam} defaultHeadcount={S.schHeadcount} onSubmitSchedule={handleSubmitSchedule} />} />
-          <Route path="/workflows" element={<PageWorkflows go={go} showToast={showToast} />} />
-          <Route path="/new-schedule" element={
-            <PageNewSchedule
-              S={S} upd={upd} schNext={schNext} toggleDay={toggleDay}
-              addRow={addRow} delRow={delRow} updRow={updRow}
-              togglePref={togglePref} updVeg={updVeg} updGfPct={updGfPct} updNfPct={updNfPct}
-              onSubmitSchedule={handleSubmitSchedule}
-            />
-          } />
-          <Route path="/teams" element={<PageTeams showToast={showToast} />} />
-          <Route path="/budget" element={<PageBudget go={go} showToast={showToast} />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <Routes>
+            <Route path="/" element={<PageDashboard go={go} toggleChat={toggleChat} serverMeta={serverMeta} showToast={showToast} />} />
+            <Route path="/schedules" element={<PageSchedules S={S} go={go} onDaySelect={(d) => upd('calDay', d)} onSubmitSchedule={handleSubmitSchedule} showToast={showToast} />} />
+            <Route path="/intake" element={<PageIntake defaultTeam={S.schTeam} defaultHeadcount={S.schHeadcount} onSubmitSchedule={handleSubmitSchedule} />} />
+            <Route path="/workflows" element={<PageWorkflows showToast={showToast} />} />
+            <Route path="/new-schedule" element={
+              <PageNewSchedule
+                S={S} upd={upd} schNext={schNext} toggleDay={toggleDay}
+                addRow={addRow} delRow={delRow} updRow={updRow}
+                togglePref={togglePref} updVeg={updVeg} updGfPct={updGfPct} updNfPct={updNfPct}
+                onSubmitSchedule={handleSubmitSchedule}
+              />
+            } />
+            <Route path="/teams" element={<PageTeams showToast={showToast} />} />
+            <Route path="/budget" element={<PageBudget go={go} showToast={showToast} />} />
+            <Route path="/notifications" element={<PageNotifications go={go} serverMeta={serverMeta} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </div>
       </main>
 
       {S.showChat && <ChatPanel chatMsgs={S.chatMsgs} toggleChat={toggleChat} sendChat={sendChat} />}
       {!S.showChat && <FloatBtn toggleChat={toggleChat} />}
+      </div>
 
       {/* Toast Notification */}
       {toast && (

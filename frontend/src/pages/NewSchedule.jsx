@@ -34,7 +34,7 @@ export function PageNewSchedule({ S, upd, schNext, toggleDay, addRow, delRow, up
       {S.schStep === 1 && (
         <div style={{ maxWidth: 640, margin: '0 auto', background: 'white', borderRadius: 20, border: '1px solid #E2E8F0', padding: 32, boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
           <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>Tell us about the trip</h2>
-          <p style={{ fontSize: 14, color: '#718096', marginBottom: 24 }}>Enter basic logistics to help our AI suggest the best meal timing.</p>
+          <p style={{ fontSize: 14, color: '#718096', marginBottom: 24 }}>Enter basic logistics to define the travel context for your meals.</p>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
             <div className="form-group">
@@ -231,11 +231,11 @@ function Step2MealPlan({ S, upd, schNext, toggleDay, addRow, delRow, updRow }) {
         <MiniCal sel={S.schDays} onToggle={toggleDay} calYear={calYear} calMonth={calMonth} onChangeMonth={changeMonth} />
         <div style={{ background: '#F8FAFC', borderRadius: 16, border: '1.5px dashed #E2E8F0', padding: 18 }}>
           <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#0F62FE' }}>auto_awesome</span>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#1E293B' }}>AI Suggestion</span>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#0F62FE' }}>info</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#1E293B' }}>Fulfillment Note</span>
           </div>
           <p style={{ fontSize: 11, color: '#64748B', lineHeight: 1.6, margin: 0 }}>
-            Based on your {S.sport || 'team'} travel, I recommend a <strong>Post-Game Meal</strong> at 8:00 PM on game days.
+            Ensure your <strong>Post-Game Meal</strong> is scheduled with enough buffer after the game time.
           </p>
         </div>
       </div>

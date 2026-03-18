@@ -1,52 +1,174 @@
 const MONTHS = {
-  january: 1,
-  february: 2,
-  march: 3,
-  april: 4,
-  may: 5,
-  june: 6,
-  july: 7,
-  august: 8,
-  september: 9,
-  october: 10,
-  november: 11,
-  december: 12,
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
 }
 
 const mealKeywords = [
-  'breakfast',
-  'lunch',
-  'dinner',
-  'snack',
-  'snacks',
-  'recovery',
-  'smoothies',
-  'pregame',
-  'pre-game',
-  'post game',
-  'post-game',
-  'pre-practice',
-  'post-practice',
+  'breakfast', 'lunch', 'dinner', 'snack', 'snacks', 'recovery', 'smoothies',
+  'pregame', 'pre-game', 'post game', 'post-game', 'pre-practice', 'post-practice',
 ]
 
 const tzMap = {
-  est: 'America/New_York',
-  edt: 'America/New_York',
-  cst: 'America/Chicago',
-  cdt: 'America/Chicago',
-  mst: 'America/Denver',
-  mdt: 'America/Denver',
-  pst: 'America/Los_Angeles',
-  pdt: 'America/Los_Angeles',
+  est: 'America/New_York', edt: 'America/New_York',
+  cst: 'America/Chicago', cdt: 'America/Chicago',
+  mst: 'America/Denver', mdt: 'America/Denver',
+  pst: 'America/Los_Angeles', pdt: 'America/Los_Angeles',
 }
 
-function pad2(n) {
-  return String(n).padStart(2, '0')
+// ─── TBD detection vocabulary ────────────────────────────────────────────────
+
+const CUISINE_WORDS = new Set([
+  'italian', 'greek', 'mexican', 'chinese', 'japanese', 'thai', 'indian',
+  'mediterranean', 'american', 'barbecue', 'bbq', 'sushi', 'pizza', 'burgers',
+  'sandwiches', 'seafood', 'steakhouse', 'steaks', 'asian', 'fusion',
+])
+
+// Words that by themselves flag vague vendors
+const VAGUE_PATTERNS = [
+  /^no\s+preference$/i,
+  /^tbd$/i,
+  /^to\s+be\s+(determined|decided)$/i,
+  /\?/,   // any question mark
+]
+
+/**
+ * Determine whether a parsed vendor string is ambiguous / unconfirmed.
+ * Returns { isTbd, tbdReason } where tbdReason is one of:
+ *   'unconfirmed' | 'multiple_options' | 'cuisine_only' | 'no_vendor' | null
+ */
+export function detectTbd(vendor) {
+  if (!vendor || vendor.trim() === '') return { isTbd: true, tbdReason: 'no_vendor' }
+
+  const v = vendor.trim()
+
+  // Question mark anywhere → unconfirmed
+  if (v.includes('?')) return { isTbd: true, tbdReason: 'unconfirmed' }
+
+  // " or " between options → multiple options, user must pick
+  if (/ or /i.test(v)) return { isTbd: true, tbdReason: 'multiple_options' }
+
+  // Vague phrases
+  if (VAGUE_PATTERNS.some(p => p.test(v))) return { isTbd: true, tbdReason: 'no_vendor' }
+
+  // Pure cuisine label — check if every meaningful word is a cuisine/vague word
+  const words = v.toLowerCase().replace(/[-/,]/g, ' ').split(/\s+/).filter(Boolean)
+  const cuisineOrVague = words.every(w =>
+    CUISINE_WORDS.has(w) || ['style', 'fancier', 'nicer', 'place', 'local', 'food', 'and'].includes(w)
+  )
+  if (cuisineOrVague) return { isTbd: true, tbdReason: 'cuisine_only' }
+
+  return { isTbd: false, tbdReason: null }
 }
 
-function toIsoDate({ year, month, day }) {
-  return `${year}-${pad2(month)}-${pad2(day)}`
+// ─── Address splitting ────────────────────────────────────────────────────────
+
+const ROAD_ABBREVS = /\b(Rd|St|Ave|Blvd|Dr|Ln|Way|Ct|Pl|Hwy|Pkwy|Road|Street|Avenue|Boulevard|Drive|Lane|Court|Place|Highway|Parkway)\b/i
+const STARTS_WITH_NUMBER = /^\d+\s/
+
+/**
+ * Split a string that may be "VendorName, 1234 Street, City, ST ZIP"
+ * into { vendor, address }.
+ *
+ * Strategy:
+ *  1. Split by comma; find first segment that starts with a number + road keyword.
+ *  2. If no comma-segment match, scan for an inline address (number + road) anywhere in text.
+ *  3. Otherwise return whole string as vendor.
+ */
+function splitVendorFromAddress(text) {
+  if (!text) return { vendor: null, address: null }
+  const t = text.trim()
+
+  // --- Pass 1: comma-segment scan ---
+  const parts = t.split(',').map(p => p.trim())
+  for (let i = 0; i < parts.length; i++) {
+    if (STARTS_WITH_NUMBER.test(parts[i]) && ROAD_ABBREVS.test(parts[i])) {
+      const vendor = parts.slice(0, i).join(', ').trim() || null
+      const address = parts.slice(i).join(', ').trim()
+      return { vendor, address }
+    }
+  }
+
+  // --- Pass 2: inline address anywhere in the string (no brackets) ---
+  // e.g. "Jimmy Johns 7404 Broadview Rd, Parma, OH 44134"
+  const inlineMatch = t.match(/\s(\d+\s+\w[\w\s]*?\b(?:Rd|St|Ave|Blvd|Dr|Ln|Way|Ct|Pl|Hwy|Pkwy|Road|Street|Avenue|Boulevard|Drive|Lane|Court|Place|Highway|Parkway)\b[^\[]*)/i)
+  if (inlineMatch) {
+    const vendor = t.slice(0, inlineMatch.index).trim() || null
+    const address = inlineMatch[1].trim()
+    return { vendor, address }
+  }
+
+  // --- Pass 3: whole string is an address ---
+  if (STARTS_WITH_NUMBER.test(t) && ROAD_ABBREVS.test(t)) {
+    return { vendor: null, address: t }
+  }
+
+  return { vendor: t || null, address: null }
 }
+
+// ─── Line content parsing ─────────────────────────────────────────────────────
+
+/**
+ * Parse a single meal line into { vendor, address, notes }.
+ *
+ * Handles:
+ *  - Bullet + bracket:      "- Lunch: Honeygrow [1485 Nagel Rd, Avon, OH 44011]"
+ *  - Bracket with vendor:   "- Lunch: Jimmy Johns [Jimmy John's, 7404 Broadview Rd]"
+ *  - Parenthetical note:    "- Breakfast: McDonalds (Cole handle)"
+ *  - Simple preference:     "- Dinner: Italian"
+ *  - "or" options:          "- Lunch: Roxa or Board and Brew"
+ *  - Time-prefixed (MLB):   "8:30 PM CST Dinner - at Hotel"
+ */
+function parseLineContent(line) {
+  const trimmed = line.trim()
+  let vendor = null, address = null, notes = null
+
+  // Extract bracket content, then remove brackets from line for colon parsing
+  const bracketMatch = trimmed.match(/\[([^\]]+)\]/)
+  const withoutBracket = bracketMatch
+    ? (trimmed.slice(0, bracketMatch.index) + trimmed.slice(bracketMatch.index + bracketMatch[0].length)).trim()
+    : trimmed
+
+  // For bullet lines, extract text after the first colon
+  const isBullet = /^[-•*]/.test(trimmed)
+  let afterColon = null
+  if (isBullet) {
+    const colonIdx = withoutBracket.indexOf(':')
+    if (colonIdx > -1) {
+      afterColon = withoutBracket.slice(colonIdx + 1).trim() || null
+    }
+  }
+
+  if (bracketMatch) {
+    const { vendor: bv, address: ba } = splitVendorFromAddress(bracketMatch[1].trim())
+    address = ba
+    // Prefer explicit text before bracket (afterColon) as vendor name
+    vendor = afterColon || bv || null
+  } else if (afterColon) {
+    // Check for parenthetical annotation: "McDonalds (Cole handle)"
+    const parenMatch = afterColon.match(/^(.+?)\s*\(([^)]+)\)\s*$/)
+    if (parenMatch) {
+      const { vendor: v, address: a } = splitVendorFromAddress(parenMatch[1].trim())
+      vendor = v
+      address = a
+      notes = parenMatch[2].trim()
+    } else {
+      const { vendor: v, address: a } = splitVendorFromAddress(afterColon)
+      vendor = v
+      address = a
+    }
+  } else {
+    // Time-prefixed lines: "8:30 PM CST Dinner - at Hotel"
+    const dashMatch = trimmed.match(/\s+-\s+(.+)$/)
+    if (dashMatch) notes = dashMatch[1].trim()
+  }
+
+  return { vendor, address, notes }
+}
+
+// ─── Core utility functions ───────────────────────────────────────────────────
+
+function pad2(n) { return String(n).padStart(2, '0') }
+function toIsoDate({ year, month, day }) { return `${year}-${pad2(month)}-${pad2(day)}` }
 
 function normalizeWhitespace(text) {
   return text
@@ -106,9 +228,7 @@ function extractTime(text) {
     return `${pad2(hours)}:${minutes}`
   }
   const match24 = text.match(/\b(\d{1,2}):(\d{2})\b/)
-  if (match24) {
-    return `${pad2(match24[1])}:${match24[2]}`
-  }
+  if (match24) return `${pad2(match24[1])}:${match24[2]}`
   return null
 }
 
@@ -132,45 +252,59 @@ function parseDayHeader(line, year) {
   return null
 }
 
-function extractNotesFromBullet(line) {
-  // Bracketed address always wins over everything else
-  const bracketMatch = line.match(/\[([^\]]+)\]/)
-  if (bracketMatch) return bracketMatch[1].trim()
+// ─── Metadata extraction ──────────────────────────────────────────────────────
 
-  // Bullet-format lines (wrestling style): "- Lunch: Roxa or Board and Brew"
-  // Only search for a colon in lines that start with a bullet marker
-  const trimmed = line.trim()
-  if (trimmed.startsWith('-') || trimmed.startsWith('•') || trimmed.startsWith('*')) {
-    const colonIdx = trimmed.indexOf(':')
-    if (colonIdx > -1) {
-      const afterColon = trimmed.slice(colonIdx + 1).trim()
-      if (afterColon.length > 0) return afterColon
-    }
-    return ''
+const DIV_TOKENS = ['NCAA', 'NAIA', 'NJCAA', 'DI', 'DII', 'DIII']
+
+function extractMetadata(text) {
+  const lower = text.toLowerCase()
+  const meta = { team: null, sport: null, division: null, venue: null, city: null, state: null, school: null }
+
+  const teamMatch = text.match(/(?:planning|trip|itinerary|schedule)\s+(?:for|of)\s+([^.\n]+)/i)
+  if (teamMatch) {
+    const parts = teamMatch[1].trim().split(/\s+/)
+    meta.team = parts[0]
+    meta.sport = parts[0]
+    const divToken = parts.slice(1).find(p => DIV_TOKENS.includes(p.toUpperCase()))
+    if (divToken) meta.division = divToken.toUpperCase()
+  } else if (lower.includes('wrestling')) {
+    meta.team = 'Wrestling'; meta.sport = 'Wrestling'
+  } else if (lower.includes('baseball')) {
+    meta.team = 'Baseball'; meta.sport = 'Baseball'
   }
 
-  // Time-prefixed lines (baseball style): "8:30 PM CST Dinner - at Hotel"
-  // Look for a " - " separator after the time, NOT the colon inside the time
-  const dashMatch = trimmed.match(/\s-\s(.+)$/)
-  if (dashMatch) return dashMatch[1].trim()
+  const venueMatch = text.match(/Venue Info:\s*([^,.\n]+)/i) || text.match(/at\s+([^,.\n]+(?:Arena|Stadium|Field|Center|Complex))/i)
+  if (venueMatch) meta.venue = venueMatch[1].trim()
 
-  // No useful notes extractable from this line
-  return ''
+  const addrMatch = text.match(/([^,.\n]+),\s*([A-Z]{2})\s*(\d{5})/i)
+  if (addrMatch) {
+    meta.city = addrMatch[1].trim()
+    meta.state = addrMatch[2].trim()
+  } else {
+    const cityInMatch = text.match(/(?:is in|in|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/)
+    if (cityInMatch) {
+      const city = cityInMatch[1].trim()
+      const blacklist = ['Good', 'Morning', 'The', 'They', 'Here', 'Once', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+      if (city.length < 20 && !blacklist.includes(city)) meta.city = city
+    }
+  }
+
+  return meta
 }
+
+// ─── Main export ──────────────────────────────────────────────────────────────
 
 export function parseAthleticsEmailToDraft({ text, year = 2026, defaultTimezone = 'America/New_York' }) {
   const raw = normalizeWhitespace(text)
   const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean)
 
+  const meta = extractMetadata(text)
   let currentDate = null
   const rows = []
 
   for (const line of lines) {
     const headerDate = parseDayHeader(line, year)
-    if (headerDate) {
-      currentDate = headerDate
-      continue
-    }
+    if (headerDate) { currentDate = headerDate; continue }
 
     const mmdd = extractMmDd(line)
     if (mmdd && !currentDate) {
@@ -185,12 +319,17 @@ export function parseAthleticsEmailToDraft({ text, year = 2026, defaultTimezone 
     const timezone = extractTimezone(line, defaultTimezone)
     const locationType = inferLocationType(`${line} ${atClause || ''}`)
 
-    let notes = ''
+    let vendor = null, address = null, notes = null
     if (atClause) {
-      notes = atClause
+      vendor = atClause
     } else {
-      notes = extractNotesFromBullet(line)
+      const parsed = parseLineContent(line)
+      vendor = parsed.vendor
+      address = parsed.address
+      notes = parsed.notes
     }
+
+    const { isTbd, tbdReason } = detectTbd(vendor)
 
     rows.push({
       date: currentDate || toIsoDate({ year, month: 1, day: 1 }),
@@ -198,20 +337,24 @@ export function parseAthleticsEmailToDraft({ text, year = 2026, defaultTimezone 
       timezone,
       mealType,
       locationType,
-      notes,
+      vendor,
+      address,
+      notes: notes || '',
+      isTbd,
+      tbdReason,
     })
   }
 
   const seen = new Set()
   const unique = []
   for (const r of rows) {
-    const key = `${r.date}|${r.time}|${r.mealType}|${r.notes}`
+    const key = `${r.date}|${r.time}|${r.mealType}|${r.vendor}|${r.address}`
     if (seen.has(key)) continue
     seen.add(key)
     unique.push(r)
   }
 
-  return { rows: unique }
+  return { rows: unique, metadata: meta }
 }
 
 export const EXAMPLE_EMAIL_BASEBALL = `THURSDAY, FEBRUARY 19
